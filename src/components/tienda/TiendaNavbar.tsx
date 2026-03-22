@@ -23,8 +23,13 @@ export function TiendaNavbar() {
 
   const handleSignOut = async () => {
     await signOut();
-    setMobileOpen(false);
+    window.location.replace("/tienda");
   };
+
+  const displayName =
+    profile?.full_name?.split(" ")[0] ??
+    profile?.email?.split("@")[0] ??
+    null;
 
   return (
     <header className="sticky top-0 z-50 bg-secondary border-b border-border">
@@ -85,7 +90,7 @@ export function TiendaNavbar() {
                       <User className="w-4 h-4 text-primary" />
                     )}
                     <span className="text-sm font-medium text-primary max-w-[120px] truncate">
-                      {profile?.full_name?.split(" ")[0] ?? "Mi cuenta"}
+                      {displayName ?? "Mi cuenta"}
                     </span>
                   </button>
 
@@ -94,7 +99,7 @@ export function TiendaNavbar() {
                       <div className="fixed inset-0 z-40" onClick={() => setUserMenuOpen(false)} />
                       <div className="absolute right-0 mt-1 w-52 bg-secondary border border-border rounded shadow-md z-50">
                         <div className="px-4 py-2.5 border-b border-border">
-                          <p className="text-sm font-medium text-primary truncate">{profile?.full_name ?? "Mi cuenta"}</p>
+                          <p className="text-sm font-medium text-primary truncate">{profile?.full_name ?? profile?.email ?? "Mi cuenta"}</p>
                           <p className="text-xs text-gray-mid truncate">{profile?.email}</p>
                         </div>
                         <Link

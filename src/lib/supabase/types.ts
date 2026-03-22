@@ -139,6 +139,176 @@ export interface Database {
         Insert: Omit<Database["public"]["Tables"]["product_presentations"]["Row"], "id" | "created_at" | "updated_at">;
         Update: Partial<Database["public"]["Tables"]["product_presentations"]["Insert"]>;
       };
+      sales: {
+        Row: {
+          id: string;
+          sale_type: SaleType;
+          customer_id: string | null;
+          customer_name: string | null;
+          seller_id: string;
+          status: SaleStatus;
+          subtotal: number;
+          discount: number;
+          shipping_cost: number;
+          total: number;
+          payment_method: PaymentMethod;
+          payment_status: PaymentStatus;
+          notes: string | null;
+          address_id: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          sale_type?: SaleType;
+          customer_id?: string | null;
+          customer_name?: string | null;
+          seller_id: string;
+          status?: SaleStatus;
+          subtotal?: number;
+          discount?: number;
+          shipping_cost?: number;
+          total?: number;
+          payment_method?: PaymentMethod;
+          payment_status?: PaymentStatus;
+          notes?: string | null;
+          address_id?: string | null;
+        };
+        Update: {
+          sale_type?: SaleType;
+          customer_id?: string | null;
+          customer_name?: string | null;
+          status?: SaleStatus;
+          subtotal?: number;
+          discount?: number;
+          shipping_cost?: number;
+          total?: number;
+          payment_method?: PaymentMethod;
+          payment_status?: PaymentStatus;
+          notes?: string | null;
+          address_id?: string | null;
+        };
+      };
+      sale_items: {
+        Row: {
+          id: string;
+          sale_id: string;
+          product_presentation_id: string;
+          quantity: number;
+          unit_price: number;
+          subtotal: number;
+          created_at: string;
+        };
+        Insert: {
+          sale_id: string;
+          product_presentation_id: string;
+          quantity: number;
+          unit_price: number;
+          subtotal: number;
+        };
+        Update: {
+          quantity?: number;
+          unit_price?: number;
+          subtotal?: number;
+        };
+      };
+      orders: {
+        Row: {
+          id: string;
+          customer_id: string;
+          status: OrderStatus;
+          delivery_method: DeliveryMethod;
+          address_id: string | null;
+          notes_customer: string | null;
+          notes_internal: string | null;
+          estimated_delivery: string | null;
+          converted_sale_id: string | null;
+          subtotal: number;
+          shipping_cost: number;
+          total: number;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          customer_id: string;
+          status?: OrderStatus;
+          delivery_method: DeliveryMethod;
+          address_id?: string | null;
+          notes_customer?: string | null;
+          notes_internal?: string | null;
+          estimated_delivery?: string | null;
+          converted_sale_id?: string | null;
+          subtotal?: number;
+          shipping_cost?: number;
+          total?: number;
+        };
+        Update: {
+          status?: OrderStatus;
+          delivery_method?: DeliveryMethod;
+          address_id?: string | null;
+          notes_customer?: string | null;
+          notes_internal?: string | null;
+          estimated_delivery?: string | null;
+          converted_sale_id?: string | null;
+          subtotal?: number;
+          shipping_cost?: number;
+          total?: number;
+        };
+      };
+      order_items: {
+        Row: {
+          id: string;
+          order_id: string;
+          product_presentation_id: string;
+          quantity: number;
+          unit_price: number;
+          subtotal: number;
+          created_at: string;
+        };
+        Insert: {
+          order_id: string;
+          product_presentation_id: string;
+          quantity: number;
+          unit_price: number;
+          subtotal: number;
+        };
+        Update: {
+          quantity?: number;
+          unit_price?: number;
+          subtotal?: number;
+        };
+      };
+      invoices: {
+        Row: {
+          id: string;
+          sale_id: string;
+          invoice_number: string;
+          customer_name: string;
+          customer_nit: string;
+          customer_address: string | null;
+          subtotal: number;
+          total: number;
+          pdf_url: string | null;
+          issued_at: string;
+          issued_by: string | null;
+        };
+        Insert: {
+          sale_id: string;
+          invoice_number: string;
+          customer_name?: string;
+          customer_nit?: string;
+          customer_address?: string | null;
+          subtotal?: number;
+          total?: number;
+          pdf_url?: string | null;
+          issued_by?: string | null;
+        };
+        Update: {
+          customer_name?: string;
+          customer_nit?: string;
+          customer_address?: string | null;
+          pdf_url?: string | null;
+        };
+      };
     };
     Views: Record<string, never>;
     Functions: Record<string, never>;

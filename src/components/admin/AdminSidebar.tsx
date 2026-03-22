@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
   Package,
@@ -42,7 +42,6 @@ const adminOnlyItems = [
 
 export function AdminSidebar() {
   const pathname = usePathname();
-  const router = useRouter();
   const { profile, signOut } = useAuth();
 
   const isActive = (href: string, exact?: boolean) => {
@@ -52,7 +51,7 @@ export function AdminSidebar() {
 
   const handleSignOut = async () => {
     await signOut();
-    router.replace("/auth/login");
+    window.location.replace("/auth/login");
   };
 
   const NavLink = ({ href, label, icon: Icon, exact }: typeof navItems[0]) => {

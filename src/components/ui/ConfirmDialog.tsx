@@ -11,6 +11,7 @@ interface ConfirmDialogProps {
   message: string;
   confirmLabel?: string;
   loading?: boolean;
+  variant?: "danger" | "primary";
 }
 
 export function ConfirmDialog({
@@ -21,6 +22,7 @@ export function ConfirmDialog({
   message,
   confirmLabel = "Confirmar",
   loading = false,
+  variant = "danger",
 }: ConfirmDialogProps) {
   return (
     <Modal isOpen={isOpen} onClose={onClose} title={title} className="md:max-w-sm">
@@ -29,7 +31,7 @@ export function ConfirmDialog({
         <Button variant="secondary" size="sm" onClick={onClose} disabled={loading}>
           Cancelar
         </Button>
-        <Button variant="danger" size="sm" onClick={onConfirm} loading={loading}>
+        <Button variant={variant} size="sm" onClick={onConfirm} loading={loading}>
           {confirmLabel}
         </Button>
       </div>

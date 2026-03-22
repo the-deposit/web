@@ -1,0 +1,198 @@
+"use server";
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type SupabaseClient = any;
+
+import { createClient } from "@/lib/supabase/server";
+import { revalidatePath } from "next/cache";
+import { z } from "zod";
+
+const CheckoutSchema = z.object({
+  delivery_method: z.enum(["envio", "recoger_en_tienda"]),
+  address_id: z.string().uuid().optional().nullable(),
+  notes_customer: z.string().max(500).optional().nullable(),
+  items: z.array(
+    z.object({
+      presentation_id: z.string().uuid(),
+      quantity: z.number().int().positive(),
+      unit_price: z.number().positive(),
+    })
+  ).min(1),
+});
+
+const AddressSchema = z.object({
+  label: z.string().min(1).max(50),
+  full_address: z.string().min(5),
+  department: z.string().optional().nullable(),
+  municipality: z.string().optional().nullable(),
+  zone: z.string().optional().nullable(),
+  reference: z.string().optional().nullable(),
+  is_default: z.boolean().optional(),
+});
+
+export async function createOrder(formData: unknown) {
+  const supabase: SupabaseClient = await createClient();
+
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { success: false, error: "Debes iniciar sesión para continuar." };
+
+  const parsed = CheckoutSchema.safeParse(formData);
+  if (!parsed.success) {
+    return { success: false, error: parsed.error.issues[0].message };
+  }
+
+  const { delivery_method, address_id, notes_customer, items } = parsed.data;
+
+  // Validate address is required for shipping
+  if (delivery_method === "envio" && !address_id) {
+    return { success: false, error: "Debes seleccionar una dirección de envío." };
+  }
+
+  // Verify all presentations exist and have enough stock
+  const presentationIds = items.map((i) => i.presentation_id);
+  const { data: presentations, error: presError } = await supabase
+    .from("product_presentations")
+    .select("id, sale_price, stock, is_active")
+    .in("id", presentationIds);
+
+  if (presError || !presentations) {
+    return { success: false, error: "Error al verificar el inventario." };
+  }
+
+  for (const item of items) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const pres = presentations.find((p: any) => p.id === item.presentation_id);
+    if (!pres || !pres.is_active) {
+      return { success: false, error: "Uno o más productos no están disponibles." };
+    }
+    if (pres.stock < item.quantity) {
+      return { success: false, error: `Stock insuficiente para uno de los productos.` };
+    }
+  }
+
+  // Calculate totals
+  const subtotal = items.reduce((acc, i) => acc + i.unit_price * i.quantity, 0);
+  const total = subtotal; // shipping cost TBD
+
+  // Create order
+  const { data: order, error: orderError } = await supabase
+    .from("orders")
+    .insert({
+      customer_id: user.id,
+      status: "pendiente",
+      delivery_method,
+      address_id: address_id ?? null,
+      notes_customer: notes_customer ?? null,
+      subtotal,
+      shipping_cost: 0,
+      total,
+    })
+    .select("id")
+    .single();
+
+  if (orderError || !order) {
+    return { success: false, error: "Error al crear el pedido." };
+  }
+
+  // Create order items
+  const orderItems = items.map((i) => ({
+    order_id: order.id,
+    product_presentation_id: i.presentation_id,
+    quantity: i.quantity,
+    unit_price: i.unit_price,
+    subtotal: i.unit_price * i.quantity,
+  }));
+
+  const { error: itemsError } = await supabase.from("order_items").insert(orderItems);
+
+  if (itemsError) {
+    // Rollback: delete the order
+    await supabase.from("orders").delete().eq("id", order.id);
+    return { success: false, error: "Error al registrar los productos del pedido." };
+  }
+
+  revalidatePath("/tienda/mis-pedidos");
+  return { success: true, orderId: order.id };
+}
+
+export async function getUserAddresses() {
+  const supabase: SupabaseClient = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { addresses: [] };
+
+  const { data } = await supabase
+    .from("addresses")
+    .select("*")
+    .eq("user_id", user.id)
+    .order("is_default", { ascending: false })
+    .order("created_at", { ascending: true });
+
+  return { addresses: data ?? [] };
+}
+
+export async function createAddress(formData: unknown) {
+  const supabase: SupabaseClient = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { success: false, error: "No autenticado" };
+
+  const parsed = AddressSchema.safeParse(formData);
+  if (!parsed.success) return { success: false, error: parsed.error.issues[0].message };
+
+  const data = parsed.data;
+
+  // If setting as default, unset others
+  if (data.is_default) {
+    await supabase
+      .from("addresses")
+      .update({ is_default: false })
+      .eq("user_id", user.id);
+  }
+
+  const { data: address, error } = await supabase
+    .from("addresses")
+    .insert({
+      user_id: user.id,
+      label: data.label,
+      full_address: data.full_address,
+      department: data.department ?? null,
+      municipality: data.municipality ?? null,
+      zone: data.zone ?? null,
+      reference: data.reference ?? null,
+      is_default: data.is_default ?? false,
+    })
+    .select("id")
+    .single();
+
+  if (error) return { success: false, error: error.message };
+  return { success: true, addressId: address.id };
+}
+
+export async function cancelOrder(orderId: string) {
+  const supabase: SupabaseClient = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { success: false, error: "No autenticado" };
+
+  const { data: order } = await supabase
+    .from("orders")
+    .select("id, status, customer_id")
+    .eq("id", orderId)
+    .single();
+
+  if (!order || order.customer_id !== user.id) {
+    return { success: false, error: "Pedido no encontrado." };
+  }
+
+  if (order.status !== "pendiente") {
+    return { success: false, error: "Solo puedes cancelar pedidos en estado pendiente." };
+  }
+
+  const { error } = await supabase
+    .from("orders")
+    .update({ status: "cancelado" })
+    .eq("id", orderId);
+
+  if (error) return { success: false, error: error.message };
+
+  revalidatePath("/tienda/mis-pedidos");
+  return { success: true };
+}

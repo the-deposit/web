@@ -1,7 +1,7 @@
 "use client";
 
 import { Bell, ChevronRight, LogOut, User } from "lucide-react";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import { useState } from "react";
 
@@ -24,13 +24,17 @@ const routeLabels: Record<string, string> = {
 export function AdminHeader() {
   const pathname = usePathname();
   const label = routeLabels[pathname] ?? "Admin";
-  const { profile, signOut } = useAuth();
-  const router = useRouter();
+  const { profile, loading, signOut } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
+
+  const displayName =
+    profile?.full_name?.split(" ")[0] ??
+    profile?.email?.split("@")[0] ??
+    null;
 
   const handleSignOut = async () => {
     await signOut();
-    router.replace("/auth/login");
+    window.location.replace("/auth/login");
   };
 
   return (
@@ -59,24 +63,38 @@ export function AdminHeader() {
             className="flex items-center gap-2 pl-2 pr-3 py-1.5 rounded hover:bg-gray-light transition-colors"
           >
             {profile?.avatar_url ? (
-              <img src={profile.avatar_url} alt="" className="w-6 h-6 rounded-full object-cover" />
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={profile.avatar_url} alt="" className="w-7 h-7 rounded-full object-cover" />
             ) : (
-              <div className="w-6 h-6 rounded-full bg-primary flex items-center justify-center">
+              <div className="w-7 h-7 rounded-full bg-primary flex items-center justify-center shrink-0">
                 <User className="w-3.5 h-3.5 text-secondary" />
               </div>
             )}
-            <span className="hidden md:block text-sm font-medium text-primary max-w-[120px] truncate">
-              {profile?.full_name?.split(" ")[0] ?? "Usuario"}
-            </span>
+            {/* Show name on desktop, show on mobile too once loaded */}
+            {!loading && (
+              <span className="text-sm font-medium text-primary max-w-[140px] truncate">
+                {displayName ?? "Mi cuenta"}
+              </span>
+            )}
+            {loading && (
+              <span className="w-16 h-4 bg-gray-light rounded animate-pulse hidden md:block" />
+            )}
           </button>
 
           {menuOpen && (
             <>
               <div className="fixed inset-0 z-40" onClick={() => setMenuOpen(false)} />
-              <div className="absolute right-0 mt-1 w-48 bg-secondary border border-border rounded shadow-md z-50">
-                <div className="px-4 py-2.5 border-b border-border">
-                  <p className="text-sm font-medium text-primary truncate">{profile?.full_name ?? "Usuario"}</p>
+              <div className="absolute right-0 mt-1 w-52 bg-secondary border border-border rounded shadow-md z-50">
+                <div className="px-4 py-3 border-b border-border">
+                  <p className="text-sm font-medium text-primary truncate">
+                    {profile?.full_name ?? profile?.email ?? "Usuario"}
+                  </p>
                   <p className="text-xs text-gray-mid truncate">{profile?.email}</p>
+                  {profile?.role && (
+                    <span className="mt-1 inline-block text-[10px] font-body uppercase tracking-wider bg-primary/10 text-primary px-2 py-0.5 rounded">
+                      {profile.role}
+                    </span>
+                  )}
                 </div>
                 <button
                   onClick={handleSignOut}

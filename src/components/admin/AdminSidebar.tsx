@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard,
   Package,
@@ -16,8 +16,10 @@ import {
   FileText,
   RefreshCcw,
   Store,
+  LogOut,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/hooks/useAuth";
 
 const navItems = [
   { href: "/admin", label: "Dashboard", icon: LayoutDashboard, exact: true },
@@ -33,17 +35,42 @@ const navItems = [
   { href: "/admin/facturas", label: "Facturas", icon: FileText },
 ];
 
-const adminItems = [
+const adminOnlyItems = [
   { href: "/admin/usuarios", label: "Usuarios", icon: Users },
   { href: "/admin/configuracion", label: "Configuración", icon: Settings },
 ];
 
 export function AdminSidebar() {
   const pathname = usePathname();
+  const router = useRouter();
+  const { profile, signOut } = useAuth();
 
   const isActive = (href: string, exact?: boolean) => {
     if (exact) return pathname === href;
     return pathname.startsWith(href);
+  };
+
+  const handleSignOut = async () => {
+    await signOut();
+    router.replace("/auth/login");
+  };
+
+  const NavLink = ({ href, label, icon: Icon, exact }: typeof navItems[0]) => {
+    const active = isActive(href, exact);
+    return (
+      <Link
+        href={href}
+        className={cn(
+          "flex items-center gap-3 px-3 py-2 rounded text-sm font-body font-medium transition-all duration-150",
+          active
+            ? "bg-secondary/10 text-secondary"
+            : "text-secondary/60 hover:text-secondary hover:bg-secondary/5"
+        )}
+      >
+        <Icon className="w-4 h-4 shrink-0" />
+        <span>{label}</span>
+      </Link>
+    );
   };
 
   return (
@@ -61,64 +88,41 @@ export function AdminSidebar() {
       {/* Nav */}
       <nav className="flex-1 overflow-y-auto py-4">
         <div className="px-3 space-y-0.5">
-          {navItems.map((item) => {
-            const Icon = item.icon;
-            const active = isActive(item.href, item.exact);
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={cn(
-                  "flex items-center gap-3 px-3 py-2 rounded text-sm font-body font-medium transition-all duration-150",
-                  active
-                    ? "bg-secondary/10 text-secondary"
-                    : "text-secondary/60 hover:text-secondary hover:bg-secondary/5"
-                )}
-              >
-                <Icon className="w-4 h-4 shrink-0" />
-                <span>{item.label}</span>
-              </Link>
-            );
-          })}
+          {navItems.map((item) => (
+            <NavLink key={item.href} {...item} />
+          ))}
         </div>
 
         {/* Admin-only section */}
-        <div className="px-3 mt-6">
-          <p className="text-[10px] font-body tracking-widest text-secondary/30 uppercase px-3 mb-2">
-            Administración
-          </p>
-          <div className="space-y-0.5">
-            {adminItems.map((item) => {
-              const Icon = item.icon;
-              const active = isActive(item.href);
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={cn(
-                    "flex items-center gap-3 px-3 py-2 rounded text-sm font-body font-medium transition-all duration-150",
-                    active
-                      ? "bg-secondary/10 text-secondary"
-                      : "text-secondary/60 hover:text-secondary hover:bg-secondary/5"
-                  )}
-                >
-                  <Icon className="w-4 h-4 shrink-0" />
-                  <span>{item.label}</span>
-                </Link>
-              );
-            })}
+        {profile?.role === "admin" && (
+          <div className="px-3 mt-6">
+            <p className="text-[10px] font-body tracking-widest text-secondary/30 uppercase px-3 mb-2">
+              Administración
+            </p>
+            <div className="space-y-0.5">
+              {adminOnlyItems.map((item) => (
+                <NavLink key={item.href} {...item} />
+              ))}
+            </div>
           </div>
-        </div>
+        )}
       </nav>
 
       {/* Footer */}
-      <div className="p-4 border-t border-secondary/10">
+      <div className="p-4 border-t border-secondary/10 space-y-2">
         <Link
           href="/tienda"
-          className="text-xs text-secondary/50 hover:text-secondary transition-colors font-body"
+          className="block text-xs text-secondary/50 hover:text-secondary transition-colors font-body"
         >
           ← Ver tienda
         </Link>
+        <button
+          onClick={handleSignOut}
+          className="flex items-center gap-2 text-xs text-secondary/50 hover:text-error transition-colors font-body w-full"
+        >
+          <LogOut className="w-3.5 h-3.5" />
+          Cerrar Sesión
+        </button>
       </div>
     </aside>
   );

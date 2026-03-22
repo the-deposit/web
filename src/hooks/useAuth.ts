@@ -20,7 +20,6 @@ export function useAuth() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Lazy import to avoid SSR Supabase initialization errors
     const { createClient } = require("@/lib/supabase/client");
     const supabase = createClient();
 
@@ -71,6 +70,36 @@ export function useAuth() {
     });
   };
 
+  const signInWithEmail = async (email: string, password: string) => {
+    const { createClient } = require("@/lib/supabase/client");
+    const supabase = createClient();
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) throw error;
+  };
+
+  const signUpWithEmail = async (email: string, password: string, fullName: string) => {
+    const { createClient } = require("@/lib/supabase/client");
+    const supabase = createClient();
+    const { error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: { full_name: fullName },
+        emailRedirectTo: `${window.location.origin}/auth/callback`,
+      },
+    });
+    if (error) throw error;
+  };
+
+  const resetPassword = async (email: string) => {
+    const { createClient } = require("@/lib/supabase/client");
+    const supabase = createClient();
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/auth/callback?next=/auth/nueva-contrasena`,
+    });
+    if (error) throw error;
+  };
+
   const signOut = async () => {
     const { createClient } = require("@/lib/supabase/client");
     const supabase = createClient();
@@ -86,6 +115,9 @@ export function useAuth() {
     profile,
     loading,
     signInWithGoogle,
+    signInWithEmail,
+    signUpWithEmail,
+    resetPassword,
     signOut,
     isAdmin,
     isVendedor,

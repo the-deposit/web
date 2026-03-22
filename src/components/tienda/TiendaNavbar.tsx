@@ -17,13 +17,11 @@ const WHATSAPP_URL = "https://wa.me/50254204805";
 
 export function TiendaNavbar() {
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [userMenuOpen, setUserMenuOpen] = useState(false);
   const totalItems = useCartStore((state) => state.totalItems());
   const { user, profile, signOut, isVendedor, loading } = useAuth();
 
   const handleSignOut = async () => {
     await signOut();
-    setUserMenuOpen(false);
     setMobileOpen(false);
   };
 
@@ -73,66 +71,35 @@ export function TiendaNavbar() {
 
           {/* User — desktop */}
           {!loading && (
-            <div className="hidden md:block relative">
+            <div className="hidden md:flex items-center gap-1">
               {user ? (
                 <>
-                  <button
-                    onClick={() => setUserMenuOpen(!userMenuOpen)}
-                    className="flex items-center gap-2 p-2 rounded hover:bg-gray-light transition-colors"
-                  >
+                  <Link href="/tienda/mi-perfil" className="flex items-center gap-2 px-3 py-1.5 rounded hover:bg-gray-light transition-colors">
                     {profile?.avatar_url ? (
                       <img src={profile.avatar_url} alt="" className="w-6 h-6 rounded-full object-cover" />
                     ) : (
-                      <User className="w-5 h-5 text-primary" />
+                      <User className="w-4 h-4 text-primary" />
                     )}
                     <span className="text-sm font-medium text-primary max-w-[100px] truncate">
                       {profile?.full_name?.split(" ")[0] ?? "Mi cuenta"}
                     </span>
-                  </button>
-
-                  {userMenuOpen && (
-                    <>
-                      <div className="fixed inset-0 z-40" onClick={() => setUserMenuOpen(false)} />
-                      <div className="absolute right-0 mt-1 w-48 bg-secondary border border-border rounded shadow-md z-50">
-                        <Link
-                          href="/tienda/mi-perfil"
-                          className="flex items-center gap-2 px-4 py-2.5 text-sm hover:bg-gray-light transition-colors"
-                          onClick={() => setUserMenuOpen(false)}
-                        >
-                          <User className="w-4 h-4" />
-                          Mi Perfil
-                        </Link>
-                        <Link
-                          href="/tienda/mis-pedidos"
-                          className="flex items-center gap-2 px-4 py-2.5 text-sm hover:bg-gray-light transition-colors"
-                          onClick={() => setUserMenuOpen(false)}
-                        >
-                          <ShoppingCart className="w-4 h-4" />
-                          Mis Pedidos
-                        </Link>
-                        {isVendedor && (
-                          <Link
-                            href="/admin"
-                            className="flex items-center gap-2 px-4 py-2.5 text-sm hover:bg-gray-light transition-colors border-t border-border"
-                            onClick={() => setUserMenuOpen(false)}
-                          >
-                            <LayoutDashboard className="w-4 h-4" />
-                            Panel Admin
-                          </Link>
-                        )}
-                        <button
-                          onClick={handleSignOut}
-                          className="flex items-center gap-2 w-full px-4 py-2.5 text-sm text-error hover:bg-gray-light transition-colors border-t border-border"
-                        >
-                          <LogOut className="w-4 h-4" />
-                          Cerrar Sesión
-                        </button>
-                      </div>
-                    </>
+                  </Link>
+                  {isVendedor && (
+                    <Link href="/admin" className="p-2 rounded hover:bg-gray-light transition-colors" title="Panel Admin">
+                      <LayoutDashboard className="w-4 h-4 text-primary" />
+                    </Link>
                   )}
+                  <button
+                    onClick={handleSignOut}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded text-sm font-medium text-error hover:bg-error/5 transition-colors"
+                    title="Cerrar Sesión"
+                  >
+                    <LogOut className="w-4 h-4" />
+                    Salir
+                  </button>
                 </>
               ) : (
-                <Link href="/auth/login" className="flex items-center gap-1.5 p-2 rounded hover:bg-gray-light transition-colors">
+                <Link href="/auth/login" className="flex items-center gap-1.5 px-3 py-1.5 rounded hover:bg-gray-light transition-colors">
                   <User className="w-5 h-5 text-primary" />
                   <span className="text-sm font-medium text-primary">Ingresar</span>
                 </Link>

@@ -103,6 +103,20 @@ export interface Database {
         Insert: Omit<Database["public"]["Tables"]["products"]["Row"], "id" | "created_at" | "updated_at">;
         Update: Partial<Database["public"]["Tables"]["products"]["Insert"]>;
       };
+      suppliers: {
+        Row: {
+          id: string;
+          name: string;
+          contact_info: string | null;
+          address: string | null;
+          notes: string | null;
+          is_active: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: Omit<Database["public"]["Tables"]["suppliers"]["Row"], "id" | "created_at" | "updated_at">;
+        Update: Partial<Database["public"]["Tables"]["suppliers"]["Insert"]>;
+      };
       product_presentations: {
         Row: {
           id: string;

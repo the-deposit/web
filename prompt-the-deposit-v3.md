@@ -1,4 +1,4 @@
-# Prompt para Claude Code — The Deposit Web App v2
+# Prompt para Claude Code — The Deposit Web App v3
 
 ## Instrucción principal
 
@@ -10,10 +10,14 @@ Toda la interfaz debe estar en **español**. La moneda es **Quetzales (GTQ)** co
 
 ## Stack tecnológico
 
-- **Frontend:** Next.js 14+ (App Router) con TypeScript, Tailwind CSS, desplegable en Vercel
-- **Base de datos y auth:** Supabase (PostgreSQL + Auth con OAuth de Google)
-- **Almacenamiento de imágenes:** Cloudinary (upload de imágenes de producto)
-- **Emails transaccionales:** Resend (confirmación de pedido, cambios de estado, notificaciones)
+- **Frontend:** Next.js 14+ (App Router) con TypeScript, Tailwind CSS
+- **Hosting:** Vercel (plan Hobby) — dominio principal `www.thedeposit.shop` (con `thedeposit.shop` → 308 redirect a www)
+- **Base de datos y auth:** Supabase (PostgreSQL + Auth con OAuth de Google únicamente)
+- **Almacenamiento de imágenes y archivos:** Cloudinary con dos upload presets (ambos **unsigned**):
+  - Preset `productos`: para imágenes de producto — auto-generated unguessable public ID
+  - Preset `facturas`: para PDFs de facturas — usa el filename original como public ID
+  - Upload unsigned desde el frontend: `https://api.cloudinary.com/v1_1/{cloud_name}/auto/upload`
+- **Emails transaccionales:** Resend — dominio `thedeposit.shop` verificado (DKIM, SPF, MX todos ✅), DNS administrado por Vercel, región us-east-1. Email de envío: `pedidos@thedeposit.shop`
 - **Escaneo de códigos de barras:** Librería del lado del cliente (quagga2 o html5-qrcode) para leer códigos EAN/UPC existentes de los productos
 - **Generación de PDF:** Facturas internas en PDF (usar @react-pdf/renderer o jspdf)
 - **Validación:** Zod para esquemas de validación
@@ -344,7 +348,8 @@ Implementa políticas RLS en Supabase:
 
 ### Módulo: Productos y Presentaciones
 - CRUD completo de productos
-- Upload de múltiples imágenes a Cloudinary con drag & drop
+- Upload de múltiples imágenes a Cloudinary con drag & drop (usar preset `productos`, unsigned upload)
+- Para facturas PDF, subir a Cloudinary con preset `facturas` (unsigned, filename como ID)
 - CRUD de presentaciones por producto:
   - Nombre de presentación
   - Código de barras (escanear con cámara o escribir manual)
@@ -485,7 +490,22 @@ Implementa políticas RLS en Supabase:
 
 ## Emails con Resend
 
-Configura Resend para enviar los siguientes emails transaccionales con templates HTML responsive y con la identidad visual de The Deposit (logo, paleta blanco/negro, tipografía):
+El dominio `thedeposit.shop` ya está verificado en Resend con todos los registros DNS confirmados (DKIM, SPF, MX). El email de envío es `pedidos@thedeposit.shop`.
+
+Para usar Resend en el código:
+```typescript
+import { Resend } from 'resend';
+const resend = new Resend(process.env.RESEND_API_KEY);
+
+await resend.emails.send({
+  from: process.env.RESEND_FROM_EMAIL, // pedidos@thedeposit.shop
+  to: customerEmail,
+  subject: 'Tu pedido ha sido confirmado',
+  html: renderEmailTemplate(data),
+});
+```
+
+Templates HTML responsive con la identidad visual de The Deposit (logo, paleta blanco/negro, tipografía):
 
 1. **Bienvenida:** cuando un usuario se registra por primera vez
 2. **Confirmación de pedido:** cuando el cliente realiza un pedido (incluir si es envío o recogida)
@@ -574,6 +594,35 @@ src/
 └── middleware.ts (protección de rutas por rol)
 ```
 
+### Referencia de implementación Cloudinary (`lib/cloudinary.ts`):
+```typescript
+// Upload unsigned desde el frontend
+const uploadToCloudinary = async (
+  file: File,
+  type: 'productos' | 'facturas'
+) => {
+  const preset = type === 'productos'
+    ? process.env.NEXT_PUBLIC_CLOUDINARY_PRESET_PRODUCTOS  // 'productos'
+    : process.env.NEXT_PUBLIC_CLOUDINARY_PRESET_FACTURAS;  // 'facturas'
+
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('upload_preset', preset!);
+
+  const res = await fetch(
+    `https://api.cloudinary.com/v1_1/${process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME}/auto/upload`,
+    { method: 'POST', body: formData }
+  );
+  const data = await res.json();
+  return data.secure_url;
+};
+
+// Transformaciones recomendadas para mostrar imágenes de producto:
+// Thumbnail catálogo: w_400,h_400,c_fill,q_auto,f_auto
+// Detalle producto:   w_800,h_800,c_limit,q_auto,f_auto
+// Miniatura carrito:  w_100,h_100,c_fill,q_auto,f_auto
+```
+
 ---
 
 ## Instrucciones adicionales
@@ -599,17 +648,28 @@ src/
    - El POS debe funcionar de forma fluida, sin lag al escanear
    - Pull-to-refresh en vistas de lista en móvil (donde aplique)
 
-5. **Variables de entorno necesarias:**
+5. **Variables de entorno (ya configuradas en Vercel):**
+
+**Todos los entornos** (Production, Preview, Development) — son públicas, visibles en el cliente:
 ```
-NEXT_PUBLIC_SUPABASE_URL=
-NEXT_PUBLIC_SUPABASE_ANON_KEY=
-SUPABASE_SERVICE_ROLE_KEY=
-NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME=
-CLOUDINARY_API_KEY=
-CLOUDINARY_API_SECRET=
-RESEND_API_KEY=
-RESEND_FROM_EMAIL=
+NEXT_PUBLIC_SUPABASE_URL=https://xxxxx.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=(anon key)
+NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME=(cloud name)
+NEXT_PUBLIC_CLOUDINARY_PRESET_PRODUCTOS=productos
+NEXT_PUBLIC_CLOUDINARY_PRESET_FACTURAS=facturas
+NEXT_PUBLIC_APP_URL=https://www.thedeposit.shop
 ```
+
+**Solo Production y Preview** — son secretas, solo accesibles desde el servidor:
+```
+SUPABASE_SERVICE_ROLE_KEY=(service role key)
+CLOUDINARY_API_KEY=(API key)
+CLOUDINARY_API_SECRET=(API secret)
+RESEND_API_KEY=(API key)
+RESEND_FROM_EMAIL=pedidos@thedeposit.shop
+```
+
+> En desarrollo local usar `.env.local` con `NEXT_PUBLIC_APP_URL=http://localhost:3000`. En el código, usar fallback: `process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'`
 
 6. **Seed data:** Incluir un script de seed que cree:
    - Categorías organizadas con subcategorías (basadas en la reorganización sugerida arriba)
@@ -623,15 +683,26 @@ RESEND_FROM_EMAIL=
 
 ---
 
+## Estado actual e infraestructura confirmada
+
+### ✅ Completado:
+- **Dominio:** `www.thedeposit.shop` (primario) con `thedeposit.shop` redirigiendo vía 308. SSL activo. DNS administrado por Vercel (nameservers: ns1.vercel-dns.com, ns2.vercel-dns.com).
+- **Vercel:** Proyecto desplegado en plan Hobby, dominio configurado y validado.
+- **Resend:** Dominio `thedeposit.shop` verificado (DKIM ✅, SPF ✅, MX ✅). Provider detectado: Vercel. Región: us-east-1 (North Virginia). API Key creada.
+- **Cloudinary:** Dos presets unsigned configurados — `productos` (auto-generated unguessable ID) y `facturas` (filename como ID).
+- **Variables de entorno:** Todas configuradas en Vercel con los scopes correctos.
+
+---
+
 ## Prioridad de implementación
 
 Construye en este orden, asegurando que cada fase funcione antes de avanzar:
 
-1. **Fase 1 — Base:** Setup del proyecto, configuración Supabase (migraciones, RLS, triggers), auth con Google OAuth, middleware de roles, layouts (admin con sidebar+bottom nav, tienda con navbar responsive), componentes UI base responsive
-2. **Fase 2 — Catálogo:** Categorías CRUD, unidades de medida, proveedores CRUD, Productos CRUD con presentaciones (incluir barcode scanner y sistema de medidas estandarizado), upload a Cloudinary, tienda en línea (catálogo responsive, detalle de producto, búsqueda, filtros)
-3. **Fase 3 — Ventas:** Carrito, checkout con selector de método de entrega (envío/recoger en tienda), POS con escáner de código de barras (responsive), gestión de pedidos (ambos flujos: envío y recogida), generación de facturas PDF
+1. ~~**Fase 1 — Base:** Setup del proyecto, configuración Supabase (migraciones, RLS, triggers), auth con Google OAuth, middleware de roles, layouts (admin con sidebar+bottom nav, tienda con navbar responsive), componentes UI base responsive~~ ✅ **COMPLETADA**
+2. **Fase 2 — Catálogo (SIGUIENTE):** Categorías CRUD, unidades de medida, proveedores CRUD, Productos CRUD con presentaciones (incluir barcode scanner y sistema de medidas estandarizado), upload a Cloudinary (preset `productos`), tienda en línea (catálogo responsive, detalle de producto, búsqueda, filtros)
+3. **Fase 3 — Ventas:** Carrito, checkout con selector de método de entrega (envío/recoger en tienda), POS con escáner de código de barras (responsive), gestión de pedidos (ambos flujos: envío y recogida), generación de facturas PDF (subir a Cloudinary con preset `facturas`)
 4. **Fase 4 — Financiero:** Compras con proveedores, cuentas por cobrar (con soporte de clientes no registrados por nombre), cuentas por pagar, consignaciones (dadas y recibidas con liquidación)
-5. **Fase 5 — Logística:** Envíos (repartidor propio y empresa tercera), tracking, integración de emails transaccionales con Resend (todos los templates)
+5. **Fase 5 — Logística:** Envíos (repartidor propio y empresa tercera), tracking, integración de emails transaccionales con Resend desde `pedidos@thedeposit.shop` (todos los templates)
 6. **Fase 6 — Dashboard:** KPIs, gráficas con Recharts, alertas, actividad reciente, vista de rentabilidad
 7. **Fase 7 — Pulido:** Seed data completo, optimización de rendimiento, revisión de UX en móvil y desktop, tests básicos
 
@@ -640,12 +711,14 @@ Construye en este orden, asegurando que cada fase funcione antes de avanzar:
 ## Información del negocio para contenido estático
 
 - **Nombre:** The Deposit
+- **Dominio principal:** www.thedeposit.shop (thedeposit.shop redirige con 308)
 - **Dirección:** Calle Real Lote 25, Aldea San Pedro Las Huertas, La Antigua Guatemala
-- **Teléfono/WhatsApp:** 54204805
+- **Teléfono/WhatsApp:** +50254204805
+- **Email de pedidos/notificaciones:** pedidos@thedeposit.shop
 - **Redes sociales:**
-  - Facebook: The Deposit.
-  - Instagram: deposit.the
-  - TikTok: @the.deposit3
+  - Facebook: https://www.facebook.com/share/1Hrq2JukAd/?mibextid=wwXIfr
+  - Instagram: https://www.instagram.com/deposit.the?igsh=Z3R6emo3eXZ0ZGZq
+  - TikTok: https://www.tiktok.com/@the.deposit3?_r=1&_t=ZS-94uCuyltnu4
 - **Año de fundación:** 2025
 
 ---

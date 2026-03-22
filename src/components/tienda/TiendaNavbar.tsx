@@ -17,6 +17,7 @@ const WHATSAPP_URL = "https://wa.me/50254204805";
 
 export function TiendaNavbar() {
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
   const totalItems = useCartStore((state) => state.totalItems());
   const { user, profile, signOut, isVendedor, loading } = useAuth();
 
@@ -71,32 +72,67 @@ export function TiendaNavbar() {
 
           {/* User — desktop */}
           {!loading && (
-            <div className="hidden md:flex items-center gap-1">
+            <div className="hidden md:block relative">
               {user ? (
                 <>
-                  <Link href="/tienda/mi-perfil" className="flex items-center gap-2 px-3 py-1.5 rounded hover:bg-gray-light transition-colors">
+                  <button
+                    onClick={() => setUserMenuOpen(!userMenuOpen)}
+                    className="flex items-center gap-2 px-3 py-1.5 rounded hover:bg-gray-light transition-colors"
+                  >
                     {profile?.avatar_url ? (
                       <img src={profile.avatar_url} alt="" className="w-6 h-6 rounded-full object-cover" />
                     ) : (
                       <User className="w-4 h-4 text-primary" />
                     )}
-                    <span className="text-sm font-medium text-primary max-w-[100px] truncate">
+                    <span className="text-sm font-medium text-primary max-w-[120px] truncate">
                       {profile?.full_name?.split(" ")[0] ?? "Mi cuenta"}
                     </span>
-                  </Link>
-                  {isVendedor && (
-                    <Link href="/admin" className="p-2 rounded hover:bg-gray-light transition-colors" title="Panel Admin">
-                      <LayoutDashboard className="w-4 h-4 text-primary" />
-                    </Link>
-                  )}
-                  <button
-                    onClick={handleSignOut}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded text-sm font-medium text-error hover:bg-error/5 transition-colors"
-                    title="Cerrar Sesión"
-                  >
-                    <LogOut className="w-4 h-4" />
-                    Salir
                   </button>
+
+                  {userMenuOpen && (
+                    <>
+                      <div className="fixed inset-0 z-40" onClick={() => setUserMenuOpen(false)} />
+                      <div className="absolute right-0 mt-1 w-52 bg-secondary border border-border rounded shadow-md z-50">
+                        <div className="px-4 py-2.5 border-b border-border">
+                          <p className="text-sm font-medium text-primary truncate">{profile?.full_name ?? "Mi cuenta"}</p>
+                          <p className="text-xs text-gray-mid truncate">{profile?.email}</p>
+                        </div>
+                        <Link
+                          href="/tienda/mi-perfil"
+                          className="flex items-center gap-2 px-4 py-2.5 text-sm hover:bg-gray-light transition-colors"
+                          onClick={() => setUserMenuOpen(false)}
+                        >
+                          <User className="w-4 h-4" />
+                          Mi Perfil
+                        </Link>
+                        <Link
+                          href="/tienda/mis-pedidos"
+                          className="flex items-center gap-2 px-4 py-2.5 text-sm hover:bg-gray-light transition-colors"
+                          onClick={() => setUserMenuOpen(false)}
+                        >
+                          <ShoppingCart className="w-4 h-4" />
+                          Mis Pedidos
+                        </Link>
+                        {isVendedor && (
+                          <Link
+                            href="/admin"
+                            className="flex items-center gap-2 px-4 py-2.5 text-sm hover:bg-gray-light transition-colors border-t border-border"
+                            onClick={() => setUserMenuOpen(false)}
+                          >
+                            <LayoutDashboard className="w-4 h-4" />
+                            Panel Admin
+                          </Link>
+                        )}
+                        <button
+                          onClick={() => { setUserMenuOpen(false); handleSignOut(); }}
+                          className="flex items-center gap-2 w-full px-4 py-2.5 text-sm text-error hover:bg-gray-light transition-colors border-t border-border"
+                        >
+                          <LogOut className="w-4 h-4" />
+                          Cerrar Sesión
+                        </button>
+                      </div>
+                    </>
+                  )}
                 </>
               ) : (
                 <Link href="/auth/login" className="flex items-center gap-1.5 px-3 py-1.5 rounded hover:bg-gray-light transition-colors">

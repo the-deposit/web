@@ -18,6 +18,7 @@ import type {
 const PIE_COLORS = ["#1A1A1A", "#555555", "#888888", "#AAAAAA", "#CCCCCC", "#E5E5E5"];
 
 type Props = {
+  isAdmin: boolean;
   kpis: KPIs;
   ventasDiarias: VentaDiaria[];
   topProductos: TopProducto[];
@@ -98,6 +99,7 @@ function AlertaItem({ alerta }: { alerta: Alerta }) {
 type PeriodTab = "dia" | "semana" | "mes";
 
 export default function DashboardClient({
+  isAdmin,
   kpis,
   ventasDiarias,
   topProductos,
@@ -178,12 +180,14 @@ export default function DashboardClient({
             valor={formatCurrency(kpis.ventasMes)}
             icon={TrendingUp}
           />
-          <KPICard
-            titulo="Ganancia bruta (mes)"
-            valor={formatCurrency(kpis.gananciaMes)}
-            sub={kpis.ventasMes > 0 ? `${Math.round((kpis.gananciaMes / kpis.ventasMes) * 100)}% margen` : undefined}
-            icon={TrendingUp}
-          />
+          {isAdmin && (
+            <KPICard
+              titulo="Ganancia bruta (mes)"
+              valor={formatCurrency(kpis.gananciaMes)}
+              sub={kpis.ventasMes > 0 ? `${Math.round((kpis.gananciaMes / kpis.ventasMes) * 100)}% margen` : undefined}
+              icon={TrendingUp}
+            />
+          )}
           <KPICard
             titulo="Pedidos pendientes"
             valor={String(kpis.pedidosPendientes)}
@@ -196,30 +200,34 @@ export default function DashboardClient({
             icon={Package}
             urgente={kpis.stockBajoCount > 0}
           />
-          <KPICard
-            titulo="CxC vencidas"
-            valor={formatCurrency(kpis.cxcVencidasMonto)}
-            icon={CreditCard}
-            urgente={kpis.cxcVencidasMonto > 0}
-          />
-          <KPICard
-            titulo="CxP próximas (7 días)"
-            valor={formatCurrency(kpis.cxpProximasMonto)}
-            icon={CreditCard}
-            urgente={kpis.cxpProximasMonto > 0}
-          />
-          <KPICard
-            titulo="Consignaciones activas"
-            valor={String(kpis.consignacionesActivas)}
-            icon={Boxes}
-          />
+          {isAdmin && (
+            <>
+              <KPICard
+                titulo="CxC vencidas"
+                valor={formatCurrency(kpis.cxcVencidasMonto)}
+                icon={CreditCard}
+                urgente={kpis.cxcVencidasMonto > 0}
+              />
+              <KPICard
+                titulo="CxP próximas (7 días)"
+                valor={formatCurrency(kpis.cxpProximasMonto)}
+                icon={CreditCard}
+                urgente={kpis.cxpProximasMonto > 0}
+              />
+              <KPICard
+                titulo="Consignaciones activas"
+                valor={String(kpis.consignacionesActivas)}
+                icon={Boxes}
+              />
+            </>
+          )}
         </div>
       </section>
 
       {/* Gráfica ventas diarias */}
       <section>
         <div className="flex items-center justify-between mb-3">
-          <SectionTitle>Ventas y ganancia</SectionTitle>
+          <SectionTitle>{isAdmin ? "Ventas y ganancia" : "Ventas"}</SectionTitle>
           <div className="flex gap-1">
             {(["dia", "semana", "mes"] as PeriodTab[]).map((p) => (
               <button
@@ -252,7 +260,9 @@ export default function DashboardClient({
                     name === "ventas" ? "Ventas" : "Ganancia",
                   ]}
                 />
-                <Legend formatter={(v) => (v === "ventas" ? "Ventas" : "Ganancia")} />
+                {isAdmin && (
+                  <Legend formatter={(v) => (v === "ventas" ? "Ventas" : "Ganancia")} />
+                )}
                 <Line
                   type="monotone"
                   dataKey="ventas"
@@ -260,14 +270,16 @@ export default function DashboardClient({
                   strokeWidth={2}
                   dot={false}
                 />
-                <Line
-                  type="monotone"
-                  dataKey="ganancia"
-                  stroke="#888888"
-                  strokeWidth={2}
-                  dot={false}
-                  strokeDasharray="4 2"
-                />
+                {isAdmin && (
+                  <Line
+                    type="monotone"
+                    dataKey="ganancia"
+                    stroke="#888888"
+                    strokeWidth={2}
+                    dot={false}
+                    strokeDasharray="4 2"
+                  />
+                )}
               </LineChart>
             </ResponsiveContainer>
           )}
@@ -310,7 +322,7 @@ export default function DashboardClient({
 
       {/* Ventas por categoría + Margen */}
       {ventasPorCategoria.length > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className={`grid grid-cols-1 gap-4 ${isAdmin ? "md:grid-cols-2" : ""}`}>
           <section>
             <SectionTitle>Ventas por categoría (mes)</SectionTitle>
             <div className="bg-white border border-gray-200 rounded-lg p-4 flex justify-center">
@@ -340,37 +352,39 @@ export default function DashboardClient({
             </div>
           </section>
 
-          <section>
-            <SectionTitle>Margen por categoría (mes)</SectionTitle>
-            <div className="bg-white border border-gray-200 rounded-lg p-4">
-              {margenPorCategoria.length === 0 ? (
-                <p className="text-sm text-gray-400 text-center py-8">Sin datos</p>
-              ) : (
-                <ResponsiveContainer width="100%" height={220}>
-                  <BarChart
-                    data={margenPorCategoria}
-                    margin={{ top: 4, right: 8, left: 0, bottom: 0 }}
-                  >
-                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                    <XAxis
-                      dataKey="nombre"
-                      tick={{ fontSize: 10 }}
-                      tickFormatter={(v: string) => (v.length > 10 ? v.slice(0, 10) + "…" : v)}
-                    />
-                    <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => `${v}%`} />
-                    {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-                    <Tooltip formatter={(v: any) => [`${v}%`, "Margen"]} />
-                    <Bar dataKey="margen" fill="#333333" radius={[3, 3, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              )}
-            </div>
-          </section>
+          {isAdmin && (
+            <section>
+              <SectionTitle>Margen por categoría (mes)</SectionTitle>
+              <div className="bg-white border border-gray-200 rounded-lg p-4">
+                {margenPorCategoria.length === 0 ? (
+                  <p className="text-sm text-gray-400 text-center py-8">Sin datos</p>
+                ) : (
+                  <ResponsiveContainer width="100%" height={220}>
+                    <BarChart
+                      data={margenPorCategoria}
+                      margin={{ top: 4, right: 8, left: 0, bottom: 0 }}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                      <XAxis
+                        dataKey="nombre"
+                        tick={{ fontSize: 10 }}
+                        tickFormatter={(v: string) => (v.length > 10 ? v.slice(0, 10) + "…" : v)}
+                      />
+                      <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => `${v}%`} />
+                      {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                      <Tooltip formatter={(v: any) => [`${v}%`, "Margen"]} />
+                      <Bar dataKey="margen" fill="#333333" radius={[3, 3, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                )}
+              </div>
+            </section>
+          )}
         </div>
       )}
 
-      {/* Precio vs competencia */}
-      {precioVsCompetencia.length > 0 && (
+      {/* Precio vs competencia — solo admin */}
+      {isAdmin && precioVsCompetencia.length > 0 && (
         <section>
           <SectionTitle>Precio vs competencia</SectionTitle>
           <div className="bg-white border border-gray-200 rounded-lg p-4">

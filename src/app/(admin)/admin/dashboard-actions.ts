@@ -79,7 +79,7 @@ function calcGanancia(sales: any[]): number {
   }, 0);
 }
 
-export async function getDashboardData(): Promise<DashboardData> {
+export async function getDashboardData(isAdmin: boolean): Promise<DashboardData> {
   const supabase = await createClient();
 
   const ahora = new Date();
@@ -93,28 +93,11 @@ export async function getDashboardData(): Promise<DashboardData> {
   const en30Dias = new Date(ahora.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
   const hace24h = new Date(ahora.getTime() - 24 * 60 * 60 * 1000).toISOString();
 
-  const [
-    ventasHoyRes,
-    ventasSemanaRes,
-    ventasMesRes,
-    pedidosPendientesRes,
-    presentacionesRes,        // para stock bajo
-    cxcVencidasRes,
-    cxpProximasRes,
-    consignacionesActivasRes,
-    ventasDiariasRes,
-    topProductosRes,
-    ventasCategoriaRes,
-    compProductosRes,
-    alertasVencimientoRes,
-    alertasPedidosRes,
-    alertasConsignacionesRes,
-    alertasCxcRes,
-    alertasCxpRes,
-  ] = await Promise.all([
+  // Queries base (todos los roles)
+  const baseQueries = Promise.all([
     supabase
       .from("sales")
-      .select("total, sale_items(quantity, product_presentations(cost_price))")
+      .select("total")
       .gte("created_at", `${hoy}T00:00:00`)
       .lte("created_at", `${hoy}T23:59:59`)
       .eq("status", "completada"),
@@ -127,7 +110,7 @@ export async function getDashboardData(): Promise<DashboardData> {
 
     supabase
       .from("sales")
-      .select("total, sale_items(quantity, product_presentations(cost_price))")
+      .select("total")
       .gte("created_at", inicioMes.toISOString())
       .eq("status", "completada"),
 
@@ -136,33 +119,14 @@ export async function getDashboardData(): Promise<DashboardData> {
       .select("id", { count: "exact", head: true })
       .eq("status", "pendiente"),
 
-    // Traemos todas las presentaciones activas para comparar stock vs min_stock en JS
     supabase
       .from("product_presentations")
       .select("id, name, stock, min_stock, products(name)")
       .eq("is_active", true),
 
     supabase
-      .from("accounts_receivable")
-      .select("balance")
-      .in("status", ["vencida", "pendiente"])
-      .lt("due_date", hoy),
-
-    supabase
-      .from("accounts_payable")
-      .select("balance")
-      .in("status", ["pendiente", "parcial"])
-      .lte("due_date", en7Dias)
-      .gte("due_date", hoy),
-
-    supabase
-      .from("consignments")
-      .select("id", { count: "exact", head: true })
-      .eq("status", "activa"),
-
-    supabase
       .from("sales")
-      .select("created_at, total, sale_items(quantity, product_presentations(cost_price))")
+      .select("created_at, total")
       .gte("created_at", hace30Dias.toISOString())
       .eq("status", "completada")
       .order("created_at"),
@@ -174,15 +138,8 @@ export async function getDashboardData(): Promise<DashboardData> {
 
     supabase
       .from("sale_items")
-      .select("subtotal, product_presentations(cost_price, products(categories(name)))")
+      .select("subtotal, product_presentations(products(categories(name)))")
       .gte("created_at", inicioMes.toISOString()),
-
-    supabase
-      .from("product_presentations")
-      .select("name, sale_price, competitor_price, products(name)")
-      .not("competitor_price", "is", null)
-      .eq("is_active", true)
-      .limit(10),
 
     supabase
       .from("product_presentations")
@@ -197,30 +154,98 @@ export async function getDashboardData(): Promise<DashboardData> {
       .select("id, created_at")
       .eq("status", "pendiente")
       .lte("created_at", hace24h),
-
-    supabase
-      .from("consignments")
-      .select("id, consignee_name, consigner_name, date_due, type")
-      .eq("status", "activa")
-      .not("date_due", "is", null)
-      .lte("date_due", en7Dias)
-      .gte("date_due", hoy),
-
-    supabase
-      .from("accounts_receivable")
-      .select("customer_name, balance, due_date")
-      .in("status", ["vencida", "pendiente"])
-      .lt("due_date", hoy)
-      .limit(5),
-
-    supabase
-      .from("accounts_payable")
-      .select("creditor_name, balance, due_date")
-      .in("status", ["pendiente", "parcial"])
-      .lte("due_date", en7Dias)
-      .gte("due_date", hoy)
-      .limit(5),
   ]);
+
+  // Queries solo admin (financiero)
+  const adminQueries = isAdmin
+    ? Promise.all([
+        supabase
+          .from("sales")
+          .select("total, sale_items(quantity, product_presentations(cost_price))")
+          .gte("created_at", inicioMes.toISOString())
+          .eq("status", "completada"),
+
+        supabase
+          .from("accounts_receivable")
+          .select("balance")
+          .in("status", ["vencida", "pendiente"])
+          .lt("due_date", hoy),
+
+        supabase
+          .from("accounts_payable")
+          .select("balance")
+          .in("status", ["pendiente", "parcial"])
+          .lte("due_date", en7Dias)
+          .gte("due_date", hoy),
+
+        supabase
+          .from("consignments")
+          .select("id", { count: "exact", head: true })
+          .eq("status", "activa"),
+
+        supabase
+          .from("sale_items")
+          .select("subtotal, product_presentations(cost_price, products(categories(name)))")
+          .gte("created_at", inicioMes.toISOString()),
+
+        supabase
+          .from("product_presentations")
+          .select("name, sale_price, competitor_price, products(name)")
+          .not("competitor_price", "is", null)
+          .eq("is_active", true)
+          .limit(10),
+
+        supabase
+          .from("consignments")
+          .select("id, consignee_name, consigner_name, date_due, type")
+          .eq("status", "activa")
+          .not("date_due", "is", null)
+          .lte("date_due", en7Dias)
+          .gte("date_due", hoy),
+
+        supabase
+          .from("accounts_receivable")
+          .select("customer_name, balance, due_date")
+          .in("status", ["vencida", "pendiente"])
+          .lt("due_date", hoy)
+          .limit(5),
+
+        supabase
+          .from("accounts_payable")
+          .select("creditor_name, balance, due_date")
+          .in("status", ["pendiente", "parcial"])
+          .lte("due_date", en7Dias)
+          .gte("due_date", hoy)
+          .limit(5),
+      ])
+    : Promise.resolve(null);
+
+  const [base, admin] = await Promise.all([baseQueries, adminQueries]);
+
+  const [
+    ventasHoyRes,
+    ventasSemanaRes,
+    ventasMesRes,
+    pedidosPendientesRes,
+    presentacionesRes,
+    ventasDiariasRes,
+    topProductosRes,
+    ventasCategoriaBaseRes,
+    alertasVencimientoRes,
+    alertasPedidosRes,
+  ] = base;
+
+  const [
+    ventasMesCostoRes,
+    cxcVencidasRes,
+    cxpProximasRes,
+    consignacionesActivasRes,
+    ventasCategoriaCostoRes,
+    compProductosRes,
+    alertasConsignacionesRes,
+    alertasCxcRes,
+    alertasCxpRes,
+  ] = admin ?? [null, null, null, null, null, null, null, null, null];
 
   // ---- KPIs ----
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -229,11 +254,11 @@ export async function getDashboardData(): Promise<DashboardData> {
   const ventasSemana = ((ventasSemanaRes.data ?? []) as any[]).reduce((s: number, v: any) => s + (v.total ?? 0), 0);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const ventasMes = ((ventasMesRes.data ?? []) as any[]).reduce((s: number, v: any) => s + (v.total ?? 0), 0);
-  const gananciaMes = calcGanancia(ventasMesRes.data ?? []);
+  const gananciaMes = isAdmin ? calcGanancia(ventasMesCostoRes?.data ?? []) : 0;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const cxcVencidasMonto = ((cxcVencidasRes.data ?? []) as any[]).reduce((s: number, r: any) => s + (r.balance ?? 0), 0);
+  const cxcVencidasMonto = ((cxcVencidasRes?.data ?? []) as any[]).reduce((s: number, r: any) => s + (r.balance ?? 0), 0);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const cxpProximasMonto = ((cxpProximasRes.data ?? []) as any[]).reduce((s: number, r: any) => s + (r.balance ?? 0), 0);
+  const cxpProximasMonto = ((cxpProximasRes?.data ?? []) as any[]).reduce((s: number, r: any) => s + (r.balance ?? 0), 0);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const stockBajoItems = (presentacionesRes.data ?? []).filter((p: any) => p.stock <= p.min_stock);
@@ -250,11 +275,7 @@ export async function getDashboardData(): Promise<DashboardData> {
   for (const sale of (ventasDiariasRes.data ?? []) as any[]) {
     const fecha = sale.created_at.split("T")[0];
     const entry = ventasDiariasMap.get(fecha) ?? { ventas: 0, ganancia: 0 };
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const costo = (sale.sale_items ?? []).reduce((c: number, item: any) =>
-      c + (item.product_presentations?.cost_price ?? 0) * item.quantity, 0);
     entry.ventas += sale.total;
-    entry.ganancia += sale.total - costo;
     ventasDiariasMap.set(fecha, entry);
   }
   const ventasDiarias: VentaDiaria[] = Array.from(ventasDiariasMap.entries()).map(([fecha, v]) => ({
@@ -284,41 +305,55 @@ export async function getDashboardData(): Promise<DashboardData> {
       ingresos: Math.round(v.ingresos * 100) / 100,
     }));
 
-  // ---- Ventas & margen por categoría ----
-  const catMap = new Map<string, { ventas: number; costos: number }>();
+  // ---- Ventas por categoría (base, sin costos) ----
+  const catVentasMap = new Map<string, number>();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  for (const item of (ventasCategoriaRes.data ?? []) as any[]) {
+  for (const item of (ventasCategoriaBaseRes.data ?? []) as any[]) {
     const cat = item.product_presentations?.products?.categories?.name ?? "Sin categoría";
-    const entry = catMap.get(cat) ?? { ventas: 0, costos: 0 };
-    entry.ventas += item.subtotal;
-    entry.costos += item.product_presentations?.cost_price ?? 0;
-    catMap.set(cat, entry);
+    catVentasMap.set(cat, (catVentasMap.get(cat) ?? 0) + item.subtotal);
   }
-  const ventasPorCategoria: VentaCategoria[] = Array.from(catMap.entries())
-    .sort((a, b) => b[1].ventas - a[1].ventas)
-    .map(([nombre, v]) => ({ nombre, ventas: Math.round(v.ventas * 100) / 100 }));
+  const ventasPorCategoria: VentaCategoria[] = Array.from(catVentasMap.entries())
+    .sort((a, b) => b[1] - a[1])
+    .map(([nombre, ventas]) => ({ nombre, ventas: Math.round(ventas * 100) / 100 }));
 
-  const margenPorCategoria: MargenCategoria[] = Array.from(catMap.entries())
-    .filter(([, v]) => v.ventas > 0)
-    .map(([nombre, v]) => ({
-      nombre,
-      margen: Math.round(((v.ventas - v.costos) / v.ventas) * 10000) / 100,
-      ventas: Math.round(v.ventas * 100) / 100,
-    }))
-    .sort((a, b) => b.margen - a.margen);
+  // ---- Margen por categoría (solo admin, con costos) ----
+  const margenPorCategoria: MargenCategoria[] = [];
+  if (isAdmin && ventasCategoriaCostoRes?.data) {
+    const catCostoMap = new Map<string, { ventas: number; costos: number }>();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    for (const item of ventasCategoriaCostoRes.data as any[]) {
+      const cat = item.product_presentations?.products?.categories?.name ?? "Sin categoría";
+      const entry = catCostoMap.get(cat) ?? { ventas: 0, costos: 0 };
+      entry.ventas += item.subtotal;
+      entry.costos += item.product_presentations?.cost_price ?? 0;
+      catCostoMap.set(cat, entry);
+    }
+    for (const [nombre, v] of catCostoMap.entries()) {
+      if (v.ventas > 0) {
+        margenPorCategoria.push({
+          nombre,
+          margen: Math.round(((v.ventas - v.costos) / v.ventas) * 10000) / 100,
+          ventas: Math.round(v.ventas * 100) / 100,
+        });
+      }
+    }
+    margenPorCategoria.sort((a, b) => b.margen - a.margen);
+  }
 
-  // ---- Precio vs competencia ----
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const precioVsCompetencia: CompetenciaProducto[] = ((compProductosRes.data ?? []) as any[]).map((p) => ({
-    nombre: p.products?.name ? `${p.products.name} - ${p.name}` : p.name,
-    precioVenta: p.sale_price,
-    precioCompetencia: p.competitor_price,
-  }));
+  // ---- Precio vs competencia (solo admin) ----
+  const precioVsCompetencia: CompetenciaProducto[] = isAdmin
+    ? // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ((compProductosRes?.data ?? []) as any[]).map((p) => ({
+        nombre: p.products?.name ? `${p.products.name} - ${p.name}` : p.name,
+        precioVenta: p.sale_price,
+        precioCompetencia: p.competitor_price,
+      }))
+    : [];
 
   // ---- Alertas ----
   const alertas: Alerta[] = [];
 
-  // Stock bajo
+  // Stock bajo (todos los roles)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   for (const p of stockBajoItems as any[]) {
     alertas.push({
@@ -329,7 +364,7 @@ export async function getDashboardData(): Promise<DashboardData> {
     });
   }
 
-  // Próximos a vencer
+  // Próximos a vencer (todos los roles)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   for (const p of (alertasVencimientoRes.data ?? []) as any[]) {
     const dias = Math.ceil(
@@ -343,7 +378,7 @@ export async function getDashboardData(): Promise<DashboardData> {
     });
   }
 
-  // Pedidos > 24h
+  // Pedidos > 24h (todos los roles)
   if ((alertasPedidosRes.data ?? []).length > 0) {
     alertas.push({
       tipo: "pedido_sin_procesar",
@@ -352,40 +387,37 @@ export async function getDashboardData(): Promise<DashboardData> {
     });
   }
 
-  // Consignaciones por vencer
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  for (const c of (alertasConsignacionesRes.data ?? []) as any[]) {
-    const nombre = c.type === "dada" ? c.consignee_name : c.consigner_name;
-    alertas.push({
-      tipo: "consignacion",
-      mensaje: `Consignación con ${nombre ?? "—"} vence el ${c.date_due}`,
-      urgente: false,
-    });
+  // Solo admin: consignaciones, CxC, CxP
+  if (isAdmin) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    for (const c of (alertasConsignacionesRes?.data ?? []) as any[]) {
+      const nombre = c.type === "dada" ? c.consignee_name : c.consigner_name;
+      alertas.push({
+        tipo: "consignacion",
+        mensaje: `Consignación con ${nombre ?? "—"} vence el ${c.date_due}`,
+        urgente: false,
+      });
+    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    for (const cxc of (alertasCxcRes?.data ?? []) as any[]) {
+      alertas.push({
+        tipo: "cxc_vencida",
+        mensaje: `CxC vencida: ${cxc.customer_name ?? "Cliente"} — Q ${cxc.balance.toFixed(2)}`,
+        detalle: `Desde ${cxc.due_date}`,
+        urgente: true,
+      });
+    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    for (const cxp of (alertasCxpRes?.data ?? []) as any[]) {
+      alertas.push({
+        tipo: "cxp_proxima",
+        mensaje: `CxP: ${cxp.creditor_name} — Q ${cxp.balance.toFixed(2)}`,
+        detalle: `Vence ${cxp.due_date}`,
+        urgente: false,
+      });
+    }
   }
 
-  // CxC vencidas
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  for (const cxc of (alertasCxcRes.data ?? []) as any[]) {
-    alertas.push({
-      tipo: "cxc_vencida",
-      mensaje: `CxC vencida: ${cxc.customer_name ?? "Cliente"} — Q ${cxc.balance.toFixed(2)}`,
-      detalle: `Desde ${cxc.due_date}`,
-      urgente: true,
-    });
-  }
-
-  // CxP próximas
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  for (const cxp of (alertasCxpRes.data ?? []) as any[]) {
-    alertas.push({
-      tipo: "cxp_proxima",
-      mensaje: `CxP: ${cxp.creditor_name} — Q ${cxp.balance.toFixed(2)}`,
-      detalle: `Vence ${cxp.due_date}`,
-      urgente: false,
-    });
-  }
-
-  // Urgentes primero
   alertas.sort((a, b) => (b.urgente ? 1 : 0) - (a.urgente ? 1 : 0));
 
   return {
@@ -398,7 +430,7 @@ export async function getDashboardData(): Promise<DashboardData> {
       stockBajoCount,
       cxcVencidasMonto: Math.round(cxcVencidasMonto * 100) / 100,
       cxpProximasMonto: Math.round(cxpProximasMonto * 100) / 100,
-      consignacionesActivas: consignacionesActivasRes.count ?? 0,
+      consignacionesActivas: consignacionesActivasRes?.count ?? 0,
     },
     ventasDiarias,
     topProductos,

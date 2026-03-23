@@ -7,7 +7,7 @@ export default async function CheckoutPage() {
 
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) {
-    redirect("/auth/login?next=/tienda/checkout");
+    redirect("/auth/login?redirect=/tienda/checkout");
   }
 
   const userId = user!.id;

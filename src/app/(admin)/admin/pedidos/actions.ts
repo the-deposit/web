@@ -197,6 +197,116 @@ async function convertOrderToSale(
     .eq("id", orderId);
 }
 
+const UpdateOrderAdminSchema = z.object({
+  orderId: z.string().uuid(),
+  notes_customer: z.string().max(500).optional().nullable(),
+  notes_internal: z.string().max(500).optional().nullable(),
+  customer_nit: z.string().max(20).optional(),
+  items: z.array(
+    z.object({
+      presentation_id: z.string().uuid(),
+      quantity: z.number().int().positive(),
+      unit_price: z.number().positive(),
+    })
+  ).min(1).optional(),
+});
+
+export async function updateOrderAdmin(formData: unknown) {
+  const supabase: SupabaseClient = await createClient();
+  await checkSellerRole(supabase);
+
+  const parsed = UpdateOrderAdminSchema.safeParse(formData);
+  if (!parsed.success) return { success: false, error: parsed.error.issues[0].message };
+
+  const { orderId, notes_customer, notes_internal, customer_nit, items } = parsed.data;
+
+  const { data: order } = await supabase
+    .from("orders")
+    .select("id, status")
+    .eq("id", orderId)
+    .single();
+
+  if (!order) return { success: false, error: "Pedido no encontrado." };
+  if (!["pendiente", "revisado"].includes(order.status)) {
+    return { success: false, error: "Solo puedes modificar pedidos pendientes o revisados." };
+  }
+
+  const updateData: Record<string, unknown> = {};
+  if (notes_customer !== undefined) updateData.notes_customer = notes_customer;
+  if (notes_internal !== undefined) updateData.notes_internal = notes_internal;
+  if (customer_nit !== undefined) updateData.customer_nit = customer_nit;
+
+  if (items) {
+    const subtotal = items.reduce((acc, i) => acc + i.unit_price * i.quantity, 0);
+    updateData.subtotal = subtotal;
+    updateData.total = subtotal;
+
+    const { error: delError } = await supabase.from("order_items").delete().eq("order_id", orderId);
+    if (delError) return { success: false, error: "Error al actualizar los productos." };
+
+    const orderItems = items.map((i) => ({
+      order_id: orderId,
+      product_presentation_id: i.presentation_id,
+      quantity: i.quantity,
+      unit_price: i.unit_price,
+      subtotal: i.unit_price * i.quantity,
+    }));
+    const { error: insError } = await supabase.from("order_items").insert(orderItems);
+    if (insError) return { success: false, error: "Error al guardar los productos." };
+  }
+
+  if (Object.keys(updateData).length > 0) {
+    const { error } = await supabase.from("orders").update(updateData).eq("id", orderId);
+    if (error) return { success: false, error: error.message };
+  }
+
+  revalidatePath("/admin/pedidos");
+  return { success: true };
+}
+
+export async function searchPresentationsForOrder(query: string) {
+  const supabase: SupabaseClient = await createClient();
+  await checkSellerRole(supabase);
+
+  if (!query || query.trim().length < 2) return { results: [] };
+
+  const { data } = await supabase
+    .from("product_presentations")
+    .select(`
+      id, name, sale_price, stock,
+      products(name, images)
+    `)
+    .eq("is_active", true)
+    .ilike("products.name", `%${query}%`)
+    .gt("stock", 0)
+    .limit(10);
+
+  // Also search by presentation name
+  const { data: byPres } = await supabase
+    .from("product_presentations")
+    .select(`
+      id, name, sale_price, stock,
+      products(name, images)
+    `)
+    .eq("is_active", true)
+    .ilike("name", `%${query}%`)
+    .gt("stock", 0)
+    .limit(10);
+
+  // Merge and deduplicate
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const all: any[] = [...(data ?? []), ...(byPres ?? [])];
+  const seen = new Set<string>();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const results = all.filter((r: any) => {
+    if (seen.has(r.id)) return false;
+    seen.add(r.id);
+    return r.products != null;
+  });
+
+  return { results };
+}
+
 export async function getOrders(filters?: {
   status?: string;
   delivery_method?: string;

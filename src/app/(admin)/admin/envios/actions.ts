@@ -115,20 +115,36 @@ export async function updateEnvioStatus(formData: unknown) {
 
   if (error) return { success: false, error: error.message };
 
-  // Send email notification when shipped or delivered
+  // Sync order status and send email when shipped or delivered
   if (status === "en_camino" || status === "entregado") {
     try {
       const { data: shipment } = await supabase
         .from("shipments")
         .select(`
-          carrier_name, tracking_number,
+          order_id, carrier_name, tracking_number,
           order:orders(
-            id,
+            id, status,
             customer:profiles(full_name, email)
           )
         `)
         .eq("id", shipment_id)
         .single();
+
+      // Sync order status: en_camino → enviado, entregado → entregado
+      if (shipment?.order_id && shipment?.order) {
+        const orderStatus = status === "en_camino" ? "enviado" : "entregado";
+        const currentOrderStatus = shipment.order.status;
+        // Only advance if not already at or past this status
+        const shouldUpdate = status === "en_camino"
+          ? !["enviado", "entregado", "cancelado", "recogido"].includes(currentOrderStatus)
+          : !["entregado", "cancelado", "recogido"].includes(currentOrderStatus);
+        if (shouldUpdate) {
+          await supabase
+            .from("orders")
+            .update({ status: orderStatus })
+            .eq("id", shipment.order_id);
+        }
+      }
 
       if (shipment?.order?.customer?.email) {
         await sendShipmentUpdate({
@@ -147,6 +163,7 @@ export async function updateEnvioStatus(formData: unknown) {
 
   revalidatePath("/admin/envios");
   revalidatePath("/admin/pedidos");
+  revalidatePath("/tienda/mis-pedidos");
   return { success: true };
 }
 

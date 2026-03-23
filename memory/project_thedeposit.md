@@ -21,7 +21,7 @@ type: project
 - ✅ **Fase 3** — Carrito, checkout (envío/recoger en tienda), Mis Pedidos, Mi Perfil (addresses CRUD), POS con escáner, gestión de pedidos admin (ambos flujos), facturas PDF (jsPDF), módulo facturas admin. Fixes: NIT en proveedores/pedidos, amount_paid en ventas, rango de precios en tarjetas, PDF de factura a Cloudinary, email de confirmación al hacer pedido.
 - ✅ **Fase 4** — Financiero: compras con proveedores (tarjeta crea CxP automático), cuentas por cobrar (auto-CxC desde POS y pedidos), cuentas por pagar, consignaciones (dada/recibida).
 - ✅ **Fase 5** — Logística: módulo envíos (crear, avanzar estado, tracking), emails transaccionales completos: confirmación pedido, actualización de estado de pedido, notificación de envío (en camino / entregado).
-- 🔲 **Fase 6** — Dashboard: KPIs, Recharts, alertas
+- ✅ **Fase 6** — Dashboard: KPIs, Recharts, alertas, info financiera oculta a vendedores. Correcciones post-lanzamiento: redirect login desde carrito/mis-pedidos (param `redirect=`), sincronización automática estado pedido al avanzar envío (en_camino → enviado, entregado → entregado), cancelar pedido con feedback de error + loading, edición de pedidos antes de confirmación desde cliente (pendiente) y admin/vendedor (pendiente/revisado).
 - 🔲 **Fase 7** — Seed completo, pulido UX, tests básicos
 
 ---
@@ -34,7 +34,7 @@ type: project
 
 ---
 
-## Módulos y archivos Fase 4–5 (nuevos)
+## Módulos y archivos Fase 4–6 (nuevos)
 
 ### Compras (`/admin/compras`)
 - `src/app/(admin)/admin/compras/actions.ts` — createCompra, getCompras, getSuppliersList, getCreditCardsList, searchPresentationsForPurchase
@@ -62,14 +62,19 @@ type: project
 - `src/app/(admin)/admin/consignaciones/nueva/page.tsx`
 
 ### Envíos (`/admin/envios`)
-- `src/app/(admin)/admin/envios/actions.ts` — getEnvios, createEnvio, updateEnvioStatus (envía email), getPendingShipmentOrders
+- `src/app/(admin)/admin/envios/actions.ts` — getEnvios, createEnvio, **updateEnvioStatus** (envía email + sincroniza estado del order: en_camino → enviado, entregado → entregado), getPendingShipmentOrders
 - `src/app/(admin)/admin/envios/EnviosList.tsx`
 - `src/app/(admin)/admin/envios/page.tsx`
 
+### Dashboard (`/admin`)
+- `src/app/(admin)/admin/page.tsx` — SSR que obtiene KPIs y pasa a DashboardClient
+- `src/app/(admin)/admin/dashboard-actions.ts` — queries por rol (info financiera oculta a vendedores)
+- `src/app/(admin)/admin/DashboardClient.tsx` — gráficas Recharts + alertas
+
 ### Email (`src/lib/email.ts`)
-- `sendOrderConfirmation` — al crear pedido (ya existía, refactorizado)
-- `sendOrderStatusUpdate` — llamado desde pedidos/actions al cambiar estado; envía para: confirmado, en_preparacion, listo_para_recoger, enviado, cancelado
-- `sendShipmentUpdate` — llamado desde envios/actions al marcar en_camino o entregado
+- `sendOrderConfirmation` — al crear pedido
+- `sendOrderStatusUpdate` — al cambiar estado (confirmado, en_preparacion, listo_para_recoger, enviado, cancelado)
+- `sendShipmentUpdate` — al marcar en_camino o entregado
 
 ---
 
@@ -82,16 +87,21 @@ No tiene columnas supplier_id, credit_card_id ni purchase_id.
 
 ---
 
-## Archivos clave previos
+## Archivos clave
 
 ### Tipos Supabase
 `src/lib/supabase/types.ts` — Incluye todos los tipos hasta Fase 3 (sales, orders, invoices, etc.)
 
 ### Acciones (server actions)
-- `src/app/(tienda)/tienda/checkout/actions.ts` — createOrder, getUserAddresses, createAddress, cancelOrder
+- `src/app/(tienda)/tienda/checkout/actions.ts` — createOrder, getUserAddresses, createAddress, cancelOrder, **updateOrderDetails** (edición de pedido en estado `pendiente` por el cliente — delivery_method, address_id, notes_customer, customer_nit, items con cantidades)
+- `src/app/(tienda)/tienda/mis-pedidos/page.tsx` — select incluye `address_id` y `customer_nit`; redirect usa `?redirect=`
 - `src/app/(tienda)/tienda/mi-perfil/actions.ts` — updateProfile, CRUD addresses
 - `src/app/(admin)/admin/ventas/pos/actions.ts` — searchByBarcode, searchByName, createPOSSale (llama autoCreateCxC si pago parcial/pendiente)
-- `src/app/(admin)/admin/pedidos/actions.ts` — updateOrderStatus, getOrders, convertOrderToSale (llama autoCreateCxC + sendOrderStatusUpdate)
+- `src/app/(admin)/admin/pedidos/actions.ts` — updateOrderStatus, getOrders, convertOrderToSale, **updateOrderAdmin** (edición pedidos `pendiente`/`revisado` por admin — notas, NIT, items), **searchPresentationsForOrder**
+
+### Auth
+- `src/app/auth/login/page.tsx` — lee `searchParams.get("redirect")` para el redirect post-login
+- Todos los redirects a login usan `?redirect=` (NO `?next=`)
 
 ### Utilidades
 - `src/lib/pdf.ts` — generateInvoicePDF (abre en nueva tab), generateInvoicePDFBlob (retorna Blob para upload)
@@ -101,10 +111,10 @@ No tiene columnas supplier_id, credit_card_id ni purchase_id.
 
 ### Componentes UI
 - `src/components/ui/Badge.tsx` — variants: `"default" | "success" | "warning" | "error" | "info" | "outline"` (NO "danger")
-- `src/components/ui/ConfirmDialog.tsx` — tiene prop `variant: "danger" | "primary"` (actualizado Fase 3)
+- `src/components/ui/ConfirmDialog.tsx` — tiene prop `variant: "danger" | "primary"` y `loading?: boolean`
 - `src/components/ui/EmptyState.tsx` — icon es `LucideIcon` (no JSX)
 - `src/components/admin/BarcodeScanner.tsx` — props: `onScan(code)`, `onClose()` — renderiza como modal full-screen
-- `src/components/admin/AdminSidebar.tsx` — ya incluye rutas de Fase 4 y 5
+- `src/components/admin/AdminSidebar.tsx` — ya incluye rutas de Fase 4, 5 y 6
 
 ### Patrón crítico
 Todos los server actions usan:

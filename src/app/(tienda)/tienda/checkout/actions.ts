@@ -212,6 +212,78 @@ export async function createAddress(formData: unknown) {
   return { success: true, addressId: address.id };
 }
 
+const UpdateOrderSchema = z.object({
+  orderId: z.string().uuid(),
+  delivery_method: z.enum(["envio", "recoger_en_tienda"]).optional(),
+  address_id: z.string().uuid().optional().nullable(),
+  notes_customer: z.string().max(500).optional().nullable(),
+  customer_nit: z.string().max(20).optional(),
+  items: z.array(
+    z.object({
+      presentation_id: z.string().uuid(),
+      quantity: z.number().int().positive(),
+      unit_price: z.number().positive(),
+    })
+  ).min(1).optional(),
+});
+
+export async function updateOrderDetails(formData: unknown) {
+  const supabase: SupabaseClient = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { success: false, error: "No autenticado" };
+
+  const parsed = UpdateOrderSchema.safeParse(formData);
+  if (!parsed.success) return { success: false, error: parsed.error.issues[0].message };
+
+  const { orderId, delivery_method, address_id, notes_customer, customer_nit, items } = parsed.data;
+
+  const { data: order } = await supabase
+    .from("orders")
+    .select("id, status, customer_id")
+    .eq("id", orderId)
+    .single();
+
+  if (!order || order.customer_id !== user.id) return { success: false, error: "Pedido no encontrado." };
+  if (order.status !== "pendiente") return { success: false, error: "Solo puedes modificar pedidos pendientes." };
+
+  if (delivery_method === "envio" && address_id === null) {
+    return { success: false, error: "Debes seleccionar una dirección de envío." };
+  }
+
+  const updateData: Record<string, unknown> = {};
+  if (delivery_method !== undefined) updateData.delivery_method = delivery_method;
+  if (address_id !== undefined) updateData.address_id = address_id;
+  if (notes_customer !== undefined) updateData.notes_customer = notes_customer;
+  if (customer_nit !== undefined) updateData.customer_nit = customer_nit;
+
+  if (items) {
+    const subtotal = items.reduce((acc, i) => acc + i.unit_price * i.quantity, 0);
+    updateData.subtotal = subtotal;
+    updateData.total = subtotal;
+
+    const { error: delError } = await supabase.from("order_items").delete().eq("order_id", orderId);
+    if (delError) return { success: false, error: "Error al actualizar los productos." };
+
+    const orderItems = items.map((i) => ({
+      order_id: orderId,
+      product_presentation_id: i.presentation_id,
+      quantity: i.quantity,
+      unit_price: i.unit_price,
+      subtotal: i.unit_price * i.quantity,
+    }));
+    const { error: insError } = await supabase.from("order_items").insert(orderItems);
+    if (insError) return { success: false, error: "Error al guardar los productos." };
+  }
+
+  if (Object.keys(updateData).length > 0) {
+    const { error } = await supabase.from("orders").update(updateData).eq("id", orderId);
+    if (error) return { success: false, error: error.message };
+  }
+
+  revalidatePath("/tienda/mis-pedidos");
+  return { success: true };
+}
+
 export async function cancelOrder(orderId: string) {
   const supabase: SupabaseClient = await createClient();
   const { data: { user } } = await supabase.auth.getUser();

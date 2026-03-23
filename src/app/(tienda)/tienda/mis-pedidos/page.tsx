@@ -7,7 +7,7 @@ export default async function MisPedidosPage() {
 
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) {
-    redirect("/auth/login?next=/tienda/mis-pedidos");
+    redirect("/auth/login?redirect=/tienda/mis-pedidos");
   }
 
   const { data: orders } = await supabase
@@ -16,14 +16,16 @@ export default async function MisPedidosPage() {
       id,
       status,
       delivery_method,
+      address_id,
       subtotal,
       shipping_cost,
       total,
       notes_customer,
+      customer_nit,
       estimated_delivery,
       created_at,
       updated_at,
-      address:addresses(label, full_address),
+      address:addresses(id, label, full_address),
       order_items(
         id,
         quantity,

@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { autoCreateCxC } from "@/app/(admin)/admin/cuentas-por-cobrar/actions";
+import { sendOrderStatusUpdate } from "@/lib/email";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type SupabaseClient = any;
@@ -63,6 +64,26 @@ export async function updateOrderStatus(formData: unknown) {
       payment_status: payment_status ?? "pendiente",
       amount_paid: amount_paid ?? 0,
     });
+  }
+
+  // Send email notification for notable status changes
+  try {
+    const { data: order } = await supabase
+      .from("orders")
+      .select("id, customer:profiles(full_name, email)")
+      .eq("id", orderId)
+      .single();
+
+    if (order?.customer?.email) {
+      await sendOrderStatusUpdate({
+        customerName: order.customer.full_name ?? "Cliente",
+        customerEmail: order.customer.email,
+        orderId,
+        status,
+      });
+    }
+  } catch (err) {
+    console.error("Error sending status email:", err);
   }
 
   revalidatePath("/admin/pedidos");

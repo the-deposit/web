@@ -17,6 +17,8 @@ import {
   RefreshCcw,
   Store,
   LogOut,
+  Tag,
+  Building2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
@@ -25,6 +27,8 @@ const navItems = [
   { href: "/admin", label: "Dashboard", icon: LayoutDashboard, exact: true },
   { href: "/admin/inventario", label: "Inventario", icon: Package },
   { href: "/admin/productos", label: "Productos", icon: Store },
+  { href: "/admin/categorias", label: "Categorías", icon: Tag },
+  { href: "/admin/proveedores", label: "Proveedores", icon: Building2 },
   { href: "/admin/ventas/pos", label: "Punto de Venta", icon: ShoppingCart },
   { href: "/admin/pedidos", label: "Pedidos", icon: ClipboardList },
   { href: "/admin/compras", label: "Compras", icon: ReceiptText },
@@ -42,16 +46,15 @@ const adminOnlyItems = [
 
 export function AdminSidebar() {
   const pathname = usePathname();
-  const { profile, signOut } = useAuth();
+  const { profile } = useAuth();
 
   const isActive = (href: string, exact?: boolean) => {
     if (exact) return pathname === href;
     return pathname.startsWith(href);
   };
 
-  const handleSignOut = async () => {
-    await signOut();
-    window.location.replace("/auth/login");
+  const handleSignOut = () => {
+    window.location.href = "/auth/signout";
   };
 
   const NavLink = ({ href, label, icon: Icon, exact }: typeof navItems[0]) => {

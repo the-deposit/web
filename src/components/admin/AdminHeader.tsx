@@ -24,7 +24,7 @@ const routeLabels: Record<string, string> = {
 export function AdminHeader() {
   const pathname = usePathname();
   const label = routeLabels[pathname] ?? "Admin";
-  const { profile, loading, signOut } = useAuth();
+  const { profile, loading } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
 
   const displayName =
@@ -32,9 +32,8 @@ export function AdminHeader() {
     profile?.email?.split("@")[0] ??
     null;
 
-  const handleSignOut = async () => {
-    await signOut();
-    window.location.replace("/auth/login");
+  const handleSignOut = () => {
+    window.location.href = "/auth/signout";
   };
 
   return (

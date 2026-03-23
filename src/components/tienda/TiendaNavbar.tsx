@@ -19,11 +19,10 @@ export function TiendaNavbar() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const totalItems = useCartStore((state) => state.totalItems());
-  const { user, profile, signOut, isVendedor, loading } = useAuth();
+  const { user, profile, isVendedor, loading } = useAuth();
 
-  const handleSignOut = async () => {
-    await signOut();
-    window.location.replace("/tienda");
+  const handleSignOut = () => {
+    window.location.href = "/auth/signout?next=/tienda";
   };
 
   const displayName =

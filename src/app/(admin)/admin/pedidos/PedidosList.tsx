@@ -12,6 +12,9 @@ import {
 import { updateOrderStatus } from "./actions";
 import type { OrderStatus, DeliveryMethod } from "@/lib/supabase/types";
 
+type PaymentMethod = "efectivo" | "tarjeta_credito" | "transferencia" | "consignacion";
+type PaymentStatus = "pagado" | "parcial" | "pendiente";
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Order = any;
 
@@ -70,6 +73,11 @@ export function PedidosList({ orders: initialOrders }: PedidosListProps) {
     status: OrderStatus;
     label: string;
   } | null>(null);
+  // Payment modal for closing sale
+  const [closingOrder, setClosingOrder] = useState<{ orderId: string; orderTotal: number; status: OrderStatus } | null>(null);
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("transferencia");
+  const [paymentStatus, setPaymentStatus] = useState<PaymentStatus>("pendiente");
+  const [amountPaid, setAmountPaid] = useState<number>(0);
   const [isPending, startTransition] = useTransition();
 
   const filteredOrders = orders.filter((o) => {
@@ -78,9 +86,13 @@ export function PedidosList({ orders: initialOrders }: PedidosListProps) {
     return true;
   });
 
-  const handleStatusUpdate = async (orderId: string, status: OrderStatus) => {
+  const handleStatusUpdate = async (orderId: string, status: OrderStatus, paymentData?: {
+    payment_method: PaymentMethod;
+    payment_status: PaymentStatus;
+    amount_paid: number;
+  }) => {
     startTransition(async () => {
-      const res = await updateOrderStatus({ orderId, status });
+      const res = await updateOrderStatus({ orderId, status, ...paymentData });
       if (res.success) {
         setOrders((prev) =>
           prev.map((o) => (o.id === orderId ? { ...o, status } : o))
@@ -88,6 +100,27 @@ export function PedidosList({ orders: initialOrders }: PedidosListProps) {
       }
     });
     setConfirmingAction(null);
+  };
+
+  const handleCloseAction = (orderId: string, status: OrderStatus, orderTotal: number) => {
+    setClosingOrder({ orderId, orderTotal, status });
+    setPaymentMethod("transferencia");
+    setPaymentStatus("pendiente");
+    setAmountPaid(0);
+  };
+
+  const handleConfirmClose = () => {
+    if (!closingOrder) return;
+    const effectiveAmountPaid =
+      paymentStatus === "pagado" ? closingOrder.orderTotal :
+      paymentStatus === "pendiente" ? 0 :
+      amountPaid;
+    handleStatusUpdate(closingOrder.orderId, closingOrder.status, {
+      payment_method: paymentMethod,
+      payment_status: paymentStatus,
+      amount_paid: effectiveAmountPaid,
+    });
+    setClosingOrder(null);
   };
 
   if (orders.length === 0) {
@@ -277,13 +310,18 @@ export function PedidosList({ orders: initialOrders }: PedidosListProps) {
                           <Button
                             size="sm"
                             loading={isPending}
-                            onClick={() =>
-                              setConfirmingAction({
-                                orderId: order.id,
-                                status: nextAction.next,
-                                label: nextAction.label,
-                              })
-                            }
+                            onClick={() => {
+                              const isClosing = nextAction.next === "entregado" || nextAction.next === "recogido";
+                              if (isClosing) {
+                                handleCloseAction(order.id, nextAction.next, order.total);
+                              } else {
+                                setConfirmingAction({
+                                  orderId: order.id,
+                                  status: nextAction.next,
+                                  label: nextAction.label,
+                                });
+                              }
+                            }}
                           >
                             {nextAction.label}
                           </Button>
@@ -322,13 +360,86 @@ export function PedidosList({ orders: initialOrders }: PedidosListProps) {
         message={
           confirmingAction?.status === "cancelado"
             ? "¿Cancelar este pedido? El cliente será notificado."
-            : confirmingAction?.status === "entregado" || confirmingAction?.status === "recogido"
-            ? "Esto convertirá el pedido en una venta y decrementará el inventario. ¿Continuar?"
             : `¿Cambiar estado a "${STATUS_LABELS[confirmingAction?.status as OrderStatus] ?? ""}"?`
         }
         confirmLabel={confirmingAction?.label ?? "Confirmar"}
         variant={confirmingAction?.status === "cancelado" ? "danger" : "primary"}
       />
+
+      {/* Payment modal when closing sale */}
+      {closingOrder && (
+        <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center">
+          <div className="absolute inset-0 bg-primary/50 backdrop-blur-sm" onClick={() => setClosingOrder(null)} />
+          <div className="relative z-10 w-full md:max-w-md bg-secondary rounded-t-2xl md:rounded-lg md:mx-4 max-h-[90vh] overflow-y-auto">
+            <div className="sticky top-0 bg-secondary border-b border-border p-4 flex items-center justify-between">
+              <div className="md:hidden absolute top-2 left-1/2 -translate-x-1/2 w-10 h-1 rounded-full bg-border" />
+              <h3 className="font-display text-lg text-primary mt-2 md:mt-0">Registrar pago</h3>
+              <button onClick={() => setClosingOrder(null)} className="text-gray-mid hover:text-primary text-xl">×</button>
+            </div>
+            <div className="p-4 space-y-4">
+              <p className="text-sm font-body text-gray-mid">
+                Esto convertirá el pedido en una venta y decrementará el inventario.
+                Registra los datos de pago del cliente.
+              </p>
+              <div className="bg-gray-light rounded p-3 flex justify-between text-sm font-body">
+                <span className="text-gray-mid">Total del pedido</span>
+                <span className="font-semibold text-primary">{formatCurrency(closingOrder.orderTotal)}</span>
+              </div>
+
+              <div>
+                <label className="block text-xs text-gray-mid font-body mb-1">Método de pago</label>
+                <select
+                  value={paymentMethod}
+                  onChange={(e) => setPaymentMethod(e.target.value as PaymentMethod)}
+                  className="w-full text-sm border border-border rounded px-3 py-2 font-body focus:outline-none focus:ring-1 focus:ring-primary bg-secondary"
+                >
+                  <option value="efectivo">Efectivo</option>
+                  <option value="tarjeta_credito">Tarjeta</option>
+                  <option value="transferencia">Transferencia</option>
+                  <option value="consignacion">Consignación</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs text-gray-mid font-body mb-1">Estado del pago</label>
+                <select
+                  value={paymentStatus}
+                  onChange={(e) => setPaymentStatus(e.target.value as PaymentStatus)}
+                  className="w-full text-sm border border-border rounded px-3 py-2 font-body focus:outline-none focus:ring-1 focus:ring-primary bg-secondary"
+                >
+                  <option value="pagado">Pagado completo</option>
+                  <option value="parcial">Pago parcial</option>
+                  <option value="pendiente">Fiado / pendiente</option>
+                </select>
+              </div>
+
+              {paymentStatus === "parcial" && (
+                <div>
+                  <label className="block text-xs text-gray-mid font-body mb-1">Monto pagado (Q)</label>
+                  <input
+                    type="number"
+                    min={0}
+                    max={closingOrder.orderTotal}
+                    value={amountPaid === 0 ? "" : String(amountPaid)}
+                    onChange={(e) => setAmountPaid(parseFloat(e.target.value) || 0)}
+                    placeholder="0.00"
+                    className="w-full text-sm border border-border rounded px-3 py-2 font-body focus:outline-none focus:ring-1 focus:ring-primary"
+                  />
+                </div>
+              )}
+
+              <div className="flex gap-2 pt-2">
+                <Button className="flex-1" loading={isPending} onClick={handleConfirmClose}>
+                  Confirmar y cerrar venta
+                </Button>
+                <Button variant="ghost" onClick={() => setClosingOrder(null)}>
+                  Cancelar
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

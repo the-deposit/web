@@ -13,6 +13,7 @@ export type CategoryFormData = z.infer<typeof CategorySchema>;
 
 export const SupplierSchema = z.object({
   name: z.string().min(1, "El nombre es requerido"),
+  nit: z.string().optional().nullable(),
   contact_info: z.string().optional().nullable(),
   address: z.string().optional().nullable(),
   notes: z.string().optional().nullable(),

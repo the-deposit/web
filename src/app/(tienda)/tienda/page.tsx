@@ -67,6 +67,7 @@ export default async function TiendaPage({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const prices = activePresentations.map((pr: any) => pr.sale_price as number);
     const minPrice = prices.length > 0 ? Math.min(...prices) : null;
+    const maxPrice = prices.length > 0 ? Math.max(...prices) : null;
     return {
       id: p.id as string,
       name: p.name as string,
@@ -75,6 +76,7 @@ export default async function TiendaPage({
       images: p.images as string[],
       is_featured: p.is_featured as boolean,
       minPrice,
+      maxPrice,
     };
   });
 
@@ -136,6 +138,7 @@ export default async function TiendaPage({
                 images={p.images}
                 is_featured={p.is_featured}
                 minPrice={p.minPrice}
+                maxPrice={p.maxPrice}
                 brand={p.brand}
               />
             ))}

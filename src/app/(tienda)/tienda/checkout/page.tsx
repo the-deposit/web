@@ -10,12 +10,21 @@ export default async function CheckoutPage() {
     redirect("/auth/login?next=/tienda/checkout");
   }
 
-  const { data: addresses } = await supabase
-    .from("addresses")
-    .select("*")
-    .eq("user_id", user.id)
-    .order("is_default", { ascending: false })
-    .order("created_at", { ascending: true });
+  const userId = user!.id;
 
-  return <CheckoutClient addresses={addresses ?? []} />;
+  const [{ data: addresses }, { data: profile }] = await Promise.all([
+    supabase
+      .from("addresses")
+      .select("*")
+      .eq("user_id", userId)
+      .order("is_default", { ascending: false })
+      .order("created_at", { ascending: true }),
+    supabase
+      .from("profiles")
+      .select("phone")
+      .eq("id", userId)
+      .single(),
+  ]);
+
+  return <CheckoutClient addresses={addresses ?? []} userPhone={(profile as { phone: string | null } | null)?.phone ?? null} />;
 }

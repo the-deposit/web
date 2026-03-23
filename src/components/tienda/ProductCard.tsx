@@ -9,6 +9,7 @@ type ProductCardProps = {
   images: string[];
   is_featured: boolean;
   minPrice: number | null;
+  maxPrice?: number | null;
   brand?: string | null;
 };
 
@@ -18,6 +19,7 @@ export function ProductCard({
   images,
   is_featured,
   minPrice,
+  maxPrice,
   brand,
 }: ProductCardProps) {
   const imageUrl = images[0]
@@ -64,7 +66,9 @@ export function ProductCard({
         </h3>
         {minPrice != null ? (
           <p className="mt-2 font-display text-base text-primary">
-            {formatCurrency(minPrice)}
+            {maxPrice != null && maxPrice > minPrice
+              ? `${formatCurrency(minPrice)} — ${formatCurrency(maxPrice)}`
+              : formatCurrency(minPrice)}
           </p>
         ) : (
           <p className="mt-2 text-xs text-gray-mid italic">Consultar precio</p>

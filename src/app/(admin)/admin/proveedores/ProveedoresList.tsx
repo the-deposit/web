@@ -13,6 +13,7 @@ import { createSupplier, updateSupplier, deleteSupplier } from "./actions";
 type Supplier = {
   id: string;
   name: string;
+  nit: string | null;
   contact_info: string | null;
   address: string | null;
   notes: string | null;
@@ -25,6 +26,7 @@ interface ProveedoresListProps {
 
 const emptyForm = {
   name: "",
+  nit: "",
   contact_info: "",
   address: "",
   notes: "",
@@ -53,6 +55,7 @@ export function ProveedoresList({ suppliers }: ProveedoresListProps) {
     setEditing(s);
     setForm({
       name: s.name,
+      nit: s.nit ?? "",
       contact_info: s.contact_info ?? "",
       address: s.address ?? "",
       notes: s.notes ?? "",
@@ -73,6 +76,7 @@ export function ProveedoresList({ suppliers }: ProveedoresListProps) {
 
     const payload = {
       name: form.name,
+      nit: form.nit || null,
       contact_info: form.contact_info || null,
       address: form.address || null,
       notes: form.notes || null,
@@ -120,6 +124,7 @@ export function ProveedoresList({ suppliers }: ProveedoresListProps) {
           <thead className="bg-gray-light border-b border-border">
             <tr>
               <th className="text-left px-4 py-3 font-medium text-primary">Nombre</th>
+              <th className="text-left px-4 py-3 font-medium text-primary">NIT</th>
               <th className="text-left px-4 py-3 font-medium text-primary">Contacto</th>
               <th className="text-left px-4 py-3 font-medium text-primary">Dirección</th>
               <th className="text-left px-4 py-3 font-medium text-primary">Estado</th>
@@ -130,6 +135,7 @@ export function ProveedoresList({ suppliers }: ProveedoresListProps) {
             {suppliers.map((s) => (
               <tr key={s.id} className="hover:bg-gray-light/50 transition-colors">
                 <td className="px-4 py-3 font-medium text-primary">{s.name}</td>
+                <td className="px-4 py-3 text-gray-mid">{s.nit ?? "—"}</td>
                 <td className="px-4 py-3 text-gray-mid">{s.contact_info ?? "—"}</td>
                 <td className="px-4 py-3 text-gray-mid">{s.address ?? "—"}</td>
                 <td className="px-4 py-3">
@@ -213,6 +219,12 @@ export function ProveedoresList({ suppliers }: ProveedoresListProps) {
             value={form.name}
             onChange={(e) => setForm({ ...form, name: e.target.value })}
             placeholder="Nombre del proveedor"
+          />
+          <Input
+            label="NIT"
+            value={form.nit}
+            onChange={(e) => setForm({ ...form, nit: e.target.value })}
+            placeholder="12345678-9"
           />
           <Input
             label="Información de contacto"

@@ -46,6 +46,7 @@ export function POSClient() {
   const [customerNit, setCustomerNit] = useState("CF");
   const [paymentMethod, setPaymentMethod] = useState<"efectivo" | "tarjeta_credito" | "transferencia">("efectivo");
   const [paymentStatus, setPaymentStatus] = useState<"pagado" | "parcial" | "pendiente">("pagado");
+  const [amountPaid, setAmountPaid] = useState<number>(0);
   const [discount, setDiscount] = useState<number>(0);
   const [notes, setNotes] = useState("");
   const [loading, setLoading] = useState(false);
@@ -135,10 +136,16 @@ export function POSClient() {
     setLoading(true);
     setSaleError(null);
 
+    const effectiveAmountPaid =
+      paymentStatus === "pagado" ? total :
+      paymentStatus === "pendiente" ? 0 :
+      amountPaid;
+
     const res = await createPOSSale({
       customer_name: customerName || null,
       payment_method: paymentMethod,
       payment_status: paymentStatus,
+      amount_paid: effectiveAmountPaid,
       discount,
       notes: notes || null,
       customer_nit: customerNit || "CF",
@@ -180,6 +187,7 @@ export function POSClient() {
     setCustomerNit("CF");
     setPaymentMethod("efectivo");
     setPaymentStatus("pagado");
+    setAmountPaid(0);
     setDiscount(0);
     setNotes("");
     setSaleMode("form");
@@ -379,6 +387,18 @@ export function POSClient() {
               <option value="pendiente">Fiado</option>
             </select>
           </div>
+
+          {paymentStatus === "parcial" && (
+            <Input
+              label="Monto pagado (Q)"
+              type="number"
+              min={0}
+              max={total}
+              value={amountPaid === 0 ? "" : String(amountPaid)}
+              onChange={(e) => setAmountPaid(parseFloat(e.target.value) || 0)}
+              placeholder="0.00"
+            />
+          )}
 
           <Input
             label="Descuento (Q)"

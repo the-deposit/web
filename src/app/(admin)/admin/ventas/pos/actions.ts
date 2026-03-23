@@ -3,6 +3,8 @@
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { generateInvoicePDFBlob } from "@/lib/pdf";
+import { uploadPDFToCloudinary } from "@/lib/cloudinary-server";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type SupabaseClient = any;
@@ -34,6 +36,7 @@ const CreateSaleSchema = z.object({
   customer_name: z.string().max(100).optional().nullable(),
   payment_method: z.enum(["efectivo", "tarjeta_credito", "transferencia", "consignacion"]),
   payment_status: z.enum(["pendiente", "parcial", "pagado"]),
+  amount_paid: z.number().min(0).default(0),
   discount: z.number().min(0).default(0),
   notes: z.string().max(500).optional().nullable(),
   items: z.array(SaleItemSchema).min(1),
@@ -129,7 +132,7 @@ export async function createPOSSale(formData: unknown) {
     return { success: false, error: parsed.error.issues[0].message };
   }
 
-  const { customer_name, payment_method, payment_status, discount, notes, items, customer_nit, generate_invoice } = parsed.data;
+  const { customer_name, payment_method, payment_status, amount_paid, discount, notes, items, customer_nit, generate_invoice } = parsed.data;
 
   // Verify stock for all items
   const presentationIds = items.map((i) => i.presentation_id);
@@ -151,6 +154,12 @@ export async function createPOSSale(formData: unknown) {
   const subtotal = items.reduce((acc, i) => acc + i.unit_price * i.quantity, 0);
   const total = Math.max(0, subtotal - (discount ?? 0));
 
+  // Compute actual amount paid
+  const effectiveAmountPaid =
+    payment_status === "pagado" ? total :
+    payment_status === "pendiente" ? 0 :
+    amount_paid ?? 0;
+
   // Create sale
   const { data: sale, error: saleError } = await supabase
     .from("sales")
@@ -165,6 +174,7 @@ export async function createPOSSale(formData: unknown) {
       total,
       payment_method,
       payment_status,
+      amount_paid: effectiveAmountPaid,
       notes: notes ?? null,
     })
     .select("id")
@@ -198,18 +208,45 @@ export async function createPOSSale(formData: unknown) {
 
   if (generate_invoice) {
     const { data: numData } = await supabase.rpc("next_invoice_number");
-    invoiceNumber = numData as string;
+    invoiceNumber = (numData as string) ?? `TD-${Date.now()}`;
+
+    // Generate PDF and upload to Cloudinary
+    let pdfUrl: string | null = null;
+    try {
+      const pdfBlob = await generateInvoicePDFBlob({
+        invoiceNumber,
+        customerName: customer_name ?? "Consumidor Final",
+        customerNit: customer_nit ?? "CF",
+        items: items.map((i) => {
+          const pres = presentations.find((p: { id: string }) => p.id === i.presentation_id);
+          return {
+            productName: pres?.name ?? "Producto",
+            presentationName: pres?.name ?? "",
+            quantity: i.quantity,
+            salePrice: i.unit_price,
+          };
+        }),
+        subtotal,
+        discount: discount ?? 0,
+        total,
+        date: new Date(),
+      });
+      pdfUrl = await uploadPDFToCloudinary(pdfBlob, `factura-${invoiceNumber}`);
+    } catch (err) {
+      console.error("Error generating/uploading invoice PDF:", err);
+    }
 
     const { data: invoice } = await supabase
       .from("invoices")
       .insert({
         sale_id: sale.id,
-        invoice_number: invoiceNumber ?? `TD-${Date.now()}`,
+        invoice_number: invoiceNumber,
         customer_name: customer_name ?? "Consumidor Final",
         customer_nit: customer_nit ?? "CF",
         subtotal,
         total,
         issued_by: user.id,
+        pdf_url: pdfUrl,
       })
       .select("id")
       .single();

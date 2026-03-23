@@ -37,6 +37,7 @@ export async function createSupplier(formData: unknown) {
 
   const { error } = await supabase.from("suppliers").insert({
     name: data.name,
+    nit: data.nit ?? null,
     contact_info: data.contact_info ?? null,
     address: data.address ?? null,
     notes: data.notes ?? null,
@@ -64,6 +65,7 @@ export async function updateSupplier(id: string, formData: unknown) {
     .from("suppliers")
     .update({
       name: data.name,
+      nit: data.nit ?? null,
       contact_info: data.contact_info ?? null,
       address: data.address ?? null,
       notes: data.notes ?? null,

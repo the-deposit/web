@@ -6,11 +6,13 @@ type SupabaseClient = any;
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { sendOrderConfirmation } from "@/lib/email";
 
 const CheckoutSchema = z.object({
   delivery_method: z.enum(["envio", "recoger_en_tienda"]),
   address_id: z.string().uuid().optional().nullable(),
   notes_customer: z.string().max(500).optional().nullable(),
+  customer_nit: z.string().max(20).default("CF"),
   items: z.array(
     z.object({
       presentation_id: z.string().uuid(),
@@ -36,12 +38,27 @@ export async function createOrder(formData: unknown) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { success: false, error: "Debes iniciar sesión para continuar." };
 
+  // Require phone number before first order
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("full_name, phone, email")
+    .eq("id", user.id)
+    .single();
+
+  if (!profile?.phone) {
+    return {
+      success: false,
+      error: "Debes registrar tu número de WhatsApp en tu perfil antes de realizar un pedido.",
+      requiresPhone: true,
+    };
+  }
+
   const parsed = CheckoutSchema.safeParse(formData);
   if (!parsed.success) {
     return { success: false, error: parsed.error.issues[0].message };
   }
 
-  const { delivery_method, address_id, notes_customer, items } = parsed.data;
+  const { delivery_method, address_id, notes_customer, customer_nit, items } = parsed.data;
 
   // Validate address is required for shipping
   if (delivery_method === "envio" && !address_id) {
@@ -83,6 +100,7 @@ export async function createOrder(formData: unknown) {
       delivery_method,
       address_id: address_id ?? null,
       notes_customer: notes_customer ?? null,
+      customer_nit: customer_nit ?? "CF",
       subtotal,
       shipping_cost: 0,
       total,
@@ -112,6 +130,33 @@ export async function createOrder(formData: unknown) {
   }
 
   revalidatePath("/tienda/mis-pedidos");
+
+  // Send confirmation email (fire and forget)
+  const { data: presentationsForEmail } = await supabase
+    .from("product_presentations")
+    .select("id, name, products(name)")
+    .in("id", items.map((i) => i.presentation_id));
+
+  sendOrderConfirmation({
+    customerName: profile.full_name ?? profile.email ?? "Cliente",
+    customerEmail: profile.email ?? user.email ?? "",
+    orderId: order.id,
+    deliveryMethod: delivery_method,
+    items: items.map((i) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const pres = (presentationsForEmail ?? []).find((p: any) => p.id === i.presentation_id);
+      return {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        productName: (pres as any)?.products?.name ?? "Producto",
+        presentationName: pres?.name ?? "",
+        quantity: i.quantity,
+        unitPrice: i.unit_price,
+        subtotal: i.unit_price * i.quantity,
+      };
+    }),
+    total,
+  });
+
   return { success: true, orderId: order.id };
 }
 

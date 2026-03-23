@@ -161,6 +161,7 @@ Diseña las siguientes tablas con las relaciones apropiadas. Usa UUIDs como prim
 
 ### suppliers (proveedores — basado en los lugares de compra del Excel)
 - `id`, `name` (ej: "PriceSmart San Cristóbal", "Maxi Despensa Chimaltenango")
+- `nit` (NIT fiscal del proveedor, opcional)
 - `contact_info`, `address`, `notes`
 - `is_active`
 
@@ -211,7 +212,8 @@ Diseña las siguientes tablas con las relaciones apropiadas. Usa UUIDs como prim
 - `seller_id` (FK profiles)
 - `status` ENUM: `pendiente`, `confirmada`, `en_preparacion`, `enviada`, `entregada`, `cancelada`
 - `subtotal`, `discount`, `shipping_cost`, `total`
-- `payment_method` ENUM: `efectivo`, `tarjeta`, `transferencia`
+- `amount_paid` (monto efectivamente pagado — relevante para pago parcial)
+- `payment_method` ENUM: `efectivo`, `tarjeta_credito`, `transferencia`, `consignacion`
 - `payment_status` ENUM: `pendiente`, `parcial`, `pagado`
 - `notes`
 - `address_id` (FK addresses, nullable — solo para envíos)
@@ -226,10 +228,13 @@ Diseña las siguientes tablas con las relaciones apropiadas. Usa UUIDs como prim
 - `status` ENUM: `pendiente`, `revisado`, `confirmado`, `en_preparacion`, `enviado`, `entregado`, `cancelado`, `listo_para_recoger`, `recogido`
 - `delivery_method` ENUM: `envio`, `recoger_en_tienda`
 - `address_id` (FK addresses, nullable — solo requerido si delivery_method = 'envio')
+- `customer_nit` (NIT fiscal del cliente — capturado en checkout, default 'CF')
 - `notes_customer` (notas del cliente)
 - `notes_internal` (notas del vendedor/admin)
 - `estimated_delivery`
 - `converted_sale_id` (FK sales, nullable — se llena cuando el pedido se convierte en venta)
+
+> **Nota checkout:** El cliente DEBE tener teléfono/WhatsApp registrado en su perfil antes de poder hacer su primer pedido. Se solicita NIT o CF en el paso de revisión del checkout.
 
 ### order_items
 - `id`, `order_id` (FK orders)
@@ -693,7 +698,7 @@ RESEND_FROM_EMAIL=pedidos@thedeposit.shop
 - **Variables de entorno:** Todas configuradas en Vercel con los scopes correctos.
 - **Supabase:** Migración `001_initial_schema.sql` aplicada. Trigger `handle_new_user` corregido con `SET search_path = public`. Google OAuth activo. Email/password auth activo.
 
-### 📁 Archivos y estructura actual (post Fase 2):
+### 📁 Archivos y estructura actual (post Fase 3):
 ```
 src/
 ├── app/
@@ -704,10 +709,17 @@ src/
 │   │   ├── productos/                    — CRUD + presentaciones + barcode + Cloudinary ✅
 │   │   │   ├── nuevo/
 │   │   │   └── [id]/
-│   │   └── proveedores/                  — CRUD completo ✅
+│   │   ├── proveedores/                  — CRUD completo + campo NIT ✅
+│   │   ├── ventas/pos/                   — POS barcode + monto pago parcial ✅
+│   │   ├── pedidos/                      — gestión pedidos + modal pago al cerrar ✅
+│   │   └── facturas/                     — historial facturas ✅
 │   ├── (tienda)/tienda/
-│   │   ├── page.tsx                      — catálogo con filtros/búsqueda/paginación ✅
-│   │   └── [slug]/                       — detalle de producto ✅
+│   │   ├── page.tsx                      — catálogo con rango de precios ✅
+│   │   ├── [slug]/                       — detalle de producto ✅
+│   │   ├── checkout/                     — NIT/CF + teléfono obligatorio + email Resend ✅
+│   │   ├── carrito/                      ✅
+│   │   ├── mis-pedidos/                  ✅
+│   │   └── mi-perfil/                    ✅
 │   └── auth/
 │       ├── login/page.tsx                — email+password + Google OAuth, anti-loop ✅
 │       └── callback/route.ts             ✅
@@ -734,11 +746,19 @@ src/
 ├── hooks/useAuth.ts                      — imports estáticos, signIn/signUp/reset/signOut ✅
 ├── lib/
 │   ├── cloudinary.ts                     ✅
+│   ├── cloudinary-server.ts              — upload PDF server-side ✅
+│   ├── email.ts                          — Resend: confirmación de pedido ✅
+│   ├── pdf.ts                            — jsPDF facturas (cliente + blob) ✅
 │   ├── validations/index.ts              — Zod schemas ✅
 │   └── supabase/{client,server,middleware,types}.ts  ✅
 ├── stores/cart-store.ts                  — Zustand + localStorage ✅
 └── middleware.ts                         — protección de rutas por rol ✅
 ```
+
+### Migraciones aplicadas:
+- `001_initial_schema.sql` — schema completo inicial
+- `002_fase3_ventas.sql` — índices adicionales
+- `003_fase3_fixes.sql` — `suppliers.nit`, `sales.amount_paid`, `orders.customer_nit`
 
 ---
 
@@ -748,8 +768,8 @@ Construye en este orden, asegurando que cada fase funcione antes de avanzar:
 
 1. ~~**Fase 1 — Base:** Setup del proyecto, configuración Supabase (migraciones, RLS, triggers), auth con Google OAuth, middleware de roles, layouts (admin con sidebar+bottom nav, tienda con navbar responsive), componentes UI base responsive~~ ✅ **COMPLETADA**
 2. ~~**Fase 2 — Catálogo:** Categorías CRUD, unidades de medida, proveedores CRUD, Productos CRUD con presentaciones (barcode scanner, sistema de medidas estandarizado), upload a Cloudinary (preset `productos`), tienda en línea (catálogo responsive, detalle de producto, búsqueda, filtros), auth email+password, navbar con sesión y cerrar sesión~~ ✅ **COMPLETADA**
-3. **Fase 3 — Ventas (SIGUIENTE):** Carrito, checkout con selector de método de entrega (envío/recoger en tienda), POS con escáner de código de barras (responsive), gestión de pedidos (ambos flujos: envío y recogida), generación de facturas PDF (subir a Cloudinary con preset `facturas`)
-4. **Fase 4 — Financiero:** Compras con proveedores, cuentas por cobrar (con soporte de clientes no registrados por nombre), cuentas por pagar, consignaciones (dadas y recibidas con liquidación)
+3. ~~**Fase 3 — Ventas:** Carrito, checkout con selector de método de entrega (envío/recoger en tienda), POS con escáner de código de barras (responsive), gestión de pedidos (ambos flujos: envío y recogida), generación de facturas PDF (subir a Cloudinary con preset `facturas`). Correcciones aplicadas: email confirmación pedido (Resend), teléfono obligatorio antes del primer pedido, NIT/CF en checkout, facturas PDF a Cloudinary (server-side), NIT en proveedores, monto de pago parcial en POS, registro de pago al cerrar pedido, rango de precios en tienda.~~ ✅ **COMPLETADA**
+4. **Fase 4 — Financiero (SIGUIENTE):** Compras con proveedores, cuentas por cobrar (con soporte de clientes no registrados por nombre), cuentas por pagar, consignaciones (dadas y recibidas con liquidación)
 5. **Fase 5 — Logística:** Envíos (repartidor propio y empresa tercera), tracking, integración de emails transaccionales con Resend desde `pedidos@thedeposit.shop` (todos los templates)
 6. **Fase 6 — Dashboard:** KPIs, gráficas con Recharts, alertas, actividad reciente, vista de rentabilidad
 7. **Fase 7 — Pulido:** Seed data completo, optimización de rendimiento, revisión de UX en móvil y desktop, tests básicos

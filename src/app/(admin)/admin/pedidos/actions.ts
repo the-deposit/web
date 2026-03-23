@@ -3,6 +3,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { autoCreateCxC } from "@/app/(admin)/admin/cuentas-por-cobrar/actions";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type SupabaseClient = any;
@@ -156,6 +157,17 @@ async function convertOrderToSale(
     total: order.total,
     issued_by: sellerId,
   });
+
+  // Auto-create accounts receivable for partial/pending payment
+  if (payment.payment_status === "pendiente" || payment.payment_status === "parcial") {
+    await autoCreateCxC(supabase, {
+      sale_id: sale.id,
+      customer_id: order.customer_id ?? null,
+      customer_name: profile?.full_name ?? "Cliente",
+      total_amount: order.total,
+      amount_paid: effectiveAmountPaid,
+    });
+  }
 
   // Link converted sale to order
   await supabase

@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { generateInvoicePDFBlob } from "@/lib/pdf";
 import { uploadPDFToCloudinary } from "@/lib/cloudinary-server";
+import { autoCreateCxC } from "@/app/(admin)/admin/cuentas-por-cobrar/actions";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type SupabaseClient = any;
@@ -254,8 +255,20 @@ export async function createPOSSale(formData: unknown) {
     invoiceId = invoice?.id ?? null;
   }
 
+  // Auto-create accounts receivable for fiado / partial sales
+  if (payment_status === "pendiente" || payment_status === "parcial") {
+    await autoCreateCxC(supabase, {
+      sale_id: sale.id,
+      customer_id: null,
+      customer_name: customer_name ?? "Cliente POS",
+      total_amount: total,
+      amount_paid: effectiveAmountPaid,
+    });
+  }
+
   revalidatePath("/admin/ventas/historial");
   revalidatePath("/admin/inventario");
+  revalidatePath("/admin/cuentas-por-cobrar");
 
   return { success: true, saleId: sale.id, invoiceId, invoiceNumber };
 }

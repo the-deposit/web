@@ -5,9 +5,8 @@ import { useCartStore } from "@/stores/cart-store";
 import { Button } from "@/components/ui/Button";
 import { formatCurrency } from "@/lib/utils";
 import { createOrder, createAddress } from "./actions";
-import { MapPin, Store, Plus, CheckCircle, ChevronDown, ChevronUp, AlertCircle } from "lucide-react";
+import { MapPin, Store, Plus, CheckCircle, ChevronDown, ChevronUp, Phone } from "lucide-react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import type { Database } from "@/lib/supabase/types";
 
 type Address = Database["public"]["Tables"]["addresses"]["Row"];
@@ -17,7 +16,7 @@ interface CheckoutClientProps {
   userPhone: string | null;
 }
 
-type Step = "delivery" | "address" | "review" | "done";
+type Step = "delivery" | "address" | "notes";
 
 export function CheckoutClient({ addresses: initialAddresses, userPhone }: CheckoutClientProps) {
   const { items, totalAmount, clearCart } = useCartStore();
@@ -31,9 +30,10 @@ export function CheckoutClient({ addresses: initialAddresses, userPhone }: Check
   const [addresses, setAddresses] = useState<Address[]>(initialAddresses);
   const [customerNit, setCustomerNit] = useState("CF");
   const [notes, setNotes] = useState("");
+  const [phone, setPhone] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [orderId, setOrderId] = useState<string | null>(null);
+  const [done, setDone] = useState(false);
 
   // New address form state
   const [showAddressForm, setShowAddressForm] = useState(false);
@@ -48,6 +48,7 @@ export function CheckoutClient({ addresses: initialAddresses, userPhone }: Check
   });
 
   const subtotal = totalAmount();
+  const needsPhone = !userPhone;
 
   const handleAddAddress = async () => {
     if (!newAddress.full_address.trim()) return;
@@ -85,14 +86,25 @@ export function CheckoutClient({ addresses: initialAddresses, userPhone }: Check
   };
 
   const handleConfirmOrder = async () => {
-    setLoading(true);
     setError(null);
+
+    if (needsPhone && !phone.trim()) {
+      setError("Ingresa tu número de WhatsApp para continuar.");
+      return;
+    }
+    if (deliveryMethod === "envio" && !selectedAddressId) {
+      setError("Selecciona una dirección de envío.");
+      return;
+    }
+
+    setLoading(true);
 
     const res = await createOrder({
       delivery_method: deliveryMethod,
       address_id: deliveryMethod === "envio" ? selectedAddressId : null,
       notes_customer: notes || null,
       customer_nit: customerNit || "CF",
+      phone: needsPhone ? phone.trim() : null,
       items: items.map((i) => ({
         presentation_id: i.presentationId,
         quantity: i.quantity,
@@ -103,16 +115,14 @@ export function CheckoutClient({ addresses: initialAddresses, userPhone }: Check
     setLoading(false);
 
     if (res.success && res.orderId) {
-      setOrderId(res.orderId);
       clearCart();
-      setStep("done");
+      setDone(true);
     } else {
       setError(res.error ?? "Error al crear el pedido.");
     }
   };
 
-  // DONE state
-  if (step === "done") {
+  if (done) {
     return (
       <div className="max-w-lg mx-auto px-4 py-12 text-center space-y-4">
         <CheckCircle className="w-16 h-16 text-success mx-auto" />
@@ -128,41 +138,12 @@ export function CheckoutClient({ addresses: initialAddresses, userPhone }: Check
             <p className="text-sm font-body text-gray-mid">
               Calle Real Lote 25, Aldea San Pedro Las Huertas, La Antigua Guatemala
             </p>
-            <p className="text-sm font-body text-gray-mid">
-              WhatsApp: +502 5420-4805
-            </p>
+            <p className="text-sm font-body text-gray-mid">WhatsApp: +502 5420-4805</p>
           </div>
         )}
         <div className="flex flex-col gap-2 pt-2">
-          <Button onClick={() => router.push("/tienda/mis-pedidos")}>
-            Ver mis pedidos
-          </Button>
-          <Button variant="secondary" onClick={() => router.push("/tienda")}>
-            Seguir comprando
-          </Button>
-        </div>
-      </div>
-    );
-  }
-
-  // Phone required warning
-  if (!userPhone) {
-    return (
-      <div className="max-w-lg mx-auto px-4 py-12 text-center space-y-4">
-        <AlertCircle className="w-12 h-12 text-warning mx-auto" />
-        <h2 className="font-display text-xl text-primary uppercase tracking-wide">
-          Registro de teléfono requerido
-        </h2>
-        <p className="text-sm text-gray-mid font-body">
-          Para realizar pedidos necesitas registrar tu número de WhatsApp. Lo usamos como medio principal de comunicación para confirmar y coordinar tu pedido.
-        </p>
-        <div className="flex flex-col gap-2 pt-2">
-          <Link href="/tienda/mi-perfil">
-            <Button className="w-full">Ir a mi perfil</Button>
-          </Link>
-          <Button variant="secondary" onClick={() => router.push("/tienda")}>
-            Volver a la tienda
-          </Button>
+          <Button onClick={() => router.push("/tienda/mis-pedidos")}>Ver mis pedidos</Button>
+          <Button variant="secondary" onClick={() => router.push("/tienda")}>Seguir comprando</Button>
         </div>
       </div>
     );
@@ -177,23 +158,44 @@ export function CheckoutClient({ addresses: initialAddresses, userPhone }: Check
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Main form */}
         <div className="lg:col-span-2 space-y-4">
+
+          {/* Phone — only when missing */}
+          {needsPhone && (
+            <div className="bg-secondary border border-primary/30 rounded p-4 space-y-3">
+              <div className="flex items-center gap-2">
+                <Phone className="w-4 h-4 text-primary shrink-0" />
+                <p className="font-body font-semibold text-primary text-sm">
+                  Teléfono de WhatsApp <span className="text-error">*</span>
+                </p>
+              </div>
+              <p className="text-xs text-gray-mid font-body">
+                Lo usamos para confirmar y coordinar tu pedido. Solo se guarda una vez.
+              </p>
+              <input
+                type="tel"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder="+502 0000-0000"
+                className="w-full text-sm border border-border rounded px-3 py-2 font-body focus:outline-none focus:ring-2 focus:ring-primary"
+              />
+            </div>
+          )}
+
           {/* Step 1: Delivery method */}
           <div className="bg-secondary border border-border rounded overflow-hidden">
             <button
               className="w-full flex items-center justify-between p-4 hover:bg-gray-light transition-colors"
-              onClick={() => setStep(step === "delivery" ? "address" : "delivery")}
+              onClick={() => setStep(step === "delivery" ? "notes" : "delivery")}
             >
               <div className="flex items-center gap-3">
                 <span className="w-6 h-6 rounded-full bg-primary text-secondary flex items-center justify-center text-xs font-body font-bold shrink-0">
-                  1
+                  {needsPhone ? "2" : "1"}
                 </span>
                 <div className="text-left">
                   <p className="font-body font-semibold text-primary text-sm">Método de entrega</p>
-                  {deliveryMethod && (
-                    <p className="text-xs text-gray-mid font-body">
-                      {deliveryMethod === "envio" ? "Envío a domicilio" : "Recoger en tienda"}
-                    </p>
-                  )}
+                  <p className="text-xs text-gray-mid font-body">
+                    {deliveryMethod === "envio" ? "Envío a domicilio" : "Recoger en tienda"}
+                  </p>
                 </div>
               </div>
               {step === "delivery" ? (
@@ -233,9 +235,7 @@ export function CheckoutClient({ addresses: initialAddresses, userPhone }: Check
                 </div>
                 <Button
                   size="sm"
-                  onClick={() =>
-                    setStep(deliveryMethod === "envio" ? "address" : "review")
-                  }
+                  onClick={() => setStep(deliveryMethod === "envio" ? "address" : "notes")}
                 >
                   Continuar
                 </Button>
@@ -252,7 +252,7 @@ export function CheckoutClient({ addresses: initialAddresses, userPhone }: Check
               >
                 <div className="flex items-center gap-3">
                   <span className="w-6 h-6 rounded-full bg-primary text-secondary flex items-center justify-center text-xs font-body font-bold shrink-0">
-                    2
+                    {needsPhone ? "3" : "2"}
                   </span>
                   <div className="text-left">
                     <p className="font-body font-semibold text-primary text-sm">Dirección de envío</p>
@@ -303,7 +303,6 @@ export function CheckoutClient({ addresses: initialAddresses, userPhone }: Check
                     </div>
                   )}
 
-                  {/* Add new address */}
                   {!showAddressForm ? (
                     <button
                       onClick={() => setShowAddressForm(true)}
@@ -354,25 +353,13 @@ export function CheckoutClient({ addresses: initialAddresses, userPhone }: Check
                         </div>
                       </div>
                       <div className="flex gap-2">
-                        <Button size="sm" onClick={handleAddAddress} loading={loading}>
-                          Guardar
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => setShowAddressForm(false)}
-                        >
-                          Cancelar
-                        </Button>
+                        <Button size="sm" onClick={handleAddAddress} loading={loading}>Guardar</Button>
+                        <Button size="sm" variant="ghost" onClick={() => setShowAddressForm(false)}>Cancelar</Button>
                       </div>
                     </div>
                   )}
 
-                  <Button
-                    size="sm"
-                    disabled={!selectedAddressId}
-                    onClick={() => setStep("review")}
-                  >
+                  <Button size="sm" disabled={!selectedAddressId} onClick={() => setStep("notes")}>
                     Continuar
                   </Button>
                 </div>
@@ -380,39 +367,30 @@ export function CheckoutClient({ addresses: initialAddresses, userPhone }: Check
             </div>
           )}
 
-          {/* Step review */}
+          {/* Step notes: optional, collapsible */}
           <div className="bg-secondary border border-border rounded overflow-hidden">
             <button
               className="w-full flex items-center justify-between p-4 hover:bg-gray-light transition-colors"
-              onClick={() => setStep("review")}
+              onClick={() => setStep(step === "notes" ? "delivery" : "notes")}
             >
               <div className="flex items-center gap-3">
                 <span className="w-6 h-6 rounded-full bg-primary text-secondary flex items-center justify-center text-xs font-body font-bold shrink-0">
-                  {deliveryMethod === "envio" ? "3" : "2"}
+                  {needsPhone ? (deliveryMethod === "envio" ? "4" : "3") : (deliveryMethod === "envio" ? "3" : "2")}
                 </span>
-                <p className="font-body font-semibold text-primary text-sm">Notas del pedido (opcional)</p>
+                <p className="font-body font-semibold text-primary text-sm">
+                  Notas del pedido{" "}
+                  <span className="font-normal text-gray-mid">(opcional)</span>
+                </p>
               </div>
-              {step === "review" ? (
+              {step === "notes" ? (
                 <ChevronUp className="w-4 h-4 text-gray-mid" />
               ) : (
                 <ChevronDown className="w-4 h-4 text-gray-mid" />
               )}
             </button>
 
-            {step === "review" && (
-              <div className="p-4 pt-0 space-y-3">
-                <div>
-                  <label className="block text-xs text-gray-mid font-body mb-1">
-                    NIT para factura <span className="text-gray-mid">(o CF si no tienes)</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={customerNit}
-                    onChange={(e) => setCustomerNit(e.target.value.toUpperCase())}
-                    placeholder="CF"
-                    className="w-full text-sm border border-border rounded px-3 py-2 font-body focus:outline-none focus:ring-1 focus:ring-primary"
-                  />
-                </div>
+            {step === "notes" && (
+              <div className="p-4 pt-0">
                 <textarea
                   rows={3}
                   placeholder="¿Alguna instrucción especial para tu pedido?"
@@ -424,9 +402,9 @@ export function CheckoutClient({ addresses: initialAddresses, userPhone }: Check
             )}
           </div>
 
-          {/* Error */}
+          {/* Error (mobile-visible) */}
           {error && (
-            <p className="text-sm text-error font-body">{error}</p>
+            <p className="text-sm text-error font-body lg:hidden">{error}</p>
           )}
         </div>
 
@@ -434,6 +412,7 @@ export function CheckoutClient({ addresses: initialAddresses, userPhone }: Check
         <div className="lg:col-span-1">
           <div className="bg-secondary border border-border rounded p-4 sticky top-4 space-y-4">
             <h2 className="font-display text-lg text-primary uppercase">Tu pedido</h2>
+
             <div className="space-y-2 max-h-48 overflow-y-auto">
               {items.map((item) => (
                 <div key={item.presentationId} className="flex justify-between gap-2 text-sm font-body">
@@ -447,6 +426,7 @@ export function CheckoutClient({ addresses: initialAddresses, userPhone }: Check
                 </div>
               ))}
             </div>
+
             <div className="border-t border-border pt-3 space-y-1 text-sm font-body">
               <div className="flex justify-between text-gray-mid">
                 <span>Subtotal</span>
@@ -461,6 +441,26 @@ export function CheckoutClient({ addresses: initialAddresses, userPhone }: Check
                 <span>{formatCurrency(subtotal)}</span>
               </div>
             </div>
+
+            {/* NIT — always visible */}
+            <div className="border-t border-border pt-3 space-y-1">
+              <label className="block text-xs font-body font-medium text-primary">
+                NIT para factura
+              </label>
+              <input
+                type="text"
+                value={customerNit}
+                onChange={(e) => setCustomerNit(e.target.value.toUpperCase())}
+                placeholder="CF"
+                className="w-full text-sm border border-border rounded px-3 py-2 font-body focus:outline-none focus:ring-1 focus:ring-primary"
+              />
+              <p className="text-[11px] text-gray-mid font-body">Escribe CF si no tienes NIT</p>
+            </div>
+
+            {error && (
+              <p className="text-sm text-error font-body hidden lg:block">{error}</p>
+            )}
+
             <Button
               size="lg"
               className="w-full"
@@ -468,12 +468,14 @@ export function CheckoutClient({ addresses: initialAddresses, userPhone }: Check
               disabled={
                 loading ||
                 items.length === 0 ||
-                (deliveryMethod === "envio" && !selectedAddressId)
+                (deliveryMethod === "envio" && !selectedAddressId) ||
+                (needsPhone && !phone.trim())
               }
               onClick={handleConfirmOrder}
             >
               Confirmar pedido
             </Button>
+
             <p className="text-xs text-gray-mid text-center font-body">
               Sin pago en línea — coordinaremos contigo
             </p>

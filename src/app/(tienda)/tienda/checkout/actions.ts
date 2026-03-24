@@ -13,6 +13,7 @@ const CheckoutSchema = z.object({
   address_id: z.string().uuid().optional().nullable(),
   notes_customer: z.string().max(500).optional().nullable(),
   customer_nit: z.string().max(20).default("CF"),
+  phone: z.string().max(20).optional().nullable(),
   items: z.array(
     z.object({
       presentation_id: z.string().uuid(),
@@ -45,20 +46,21 @@ export async function createOrder(formData: unknown) {
     .eq("id", user.id)
     .single();
 
-  if (!profile?.phone) {
-    return {
-      success: false,
-      error: "Debes registrar tu número de WhatsApp en tu perfil antes de realizar un pedido.",
-      requiresPhone: true,
-    };
-  }
-
   const parsed = CheckoutSchema.safeParse(formData);
   if (!parsed.success) {
     return { success: false, error: parsed.error.issues[0].message };
   }
 
-  const { delivery_method, address_id, notes_customer, customer_nit, items } = parsed.data;
+  const { delivery_method, address_id, notes_customer, customer_nit, phone, items } = parsed.data;
+
+  // Save phone if profile doesn't have one yet
+  const effectivePhone = profile?.phone || phone?.trim() || null;
+  if (!effectivePhone) {
+    return { success: false, error: "Ingresa tu número de WhatsApp para continuar." };
+  }
+  if (!profile?.phone && phone?.trim()) {
+    await supabase.from("profiles").update({ phone: phone.trim() }).eq("id", user.id);
+  }
 
   // Validate address is required for shipping
   if (delivery_method === "envio" && !address_id) {

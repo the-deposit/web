@@ -5,7 +5,6 @@ import { useState, useTransition } from "react";
 import { Search } from "lucide-react";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
-import { CategoryFilter } from "./CategoryFilter";
 
 type CatalogoFiltersProps = {
   categories: Array<{ id: string; name: string }>;
@@ -36,7 +35,6 @@ export function CatalogoFilters({
     Object.entries(merged).forEach(([key, value]) => {
       if (value) params.set(key, value);
     });
-    // Reset to page 1 on filter change
     params.delete("page");
     startTransition(() => {
       router.push(`${pathname}?${params.toString()}`);
@@ -49,28 +47,42 @@ export function CatalogoFilters({
   };
 
   return (
-    <div className="space-y-4">
-      {/* Search + Sort row */}
-      <div className="flex gap-3">
-        <form onSubmit={handleSearchSubmit} className="flex-1 flex gap-2">
-          <Input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Buscar productos..."
-            className="flex-1"
-          />
-          <button
-            type="submit"
-            className="px-3 py-2 bg-primary text-secondary rounded hover:bg-accent transition-colors"
-            aria-label="Buscar"
-          >
-            <Search className="w-4 h-4" />
-          </button>
-        </form>
+    <div className="space-y-3">
+      {/* Search */}
+      <form onSubmit={handleSearchSubmit} className="flex gap-2">
+        <Input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Buscar productos..."
+          className="flex-1"
+        />
+        <button
+          type="submit"
+          className="px-3 py-2 bg-primary text-secondary rounded hover:bg-accent transition-colors"
+          aria-label="Buscar"
+        >
+          <Search className="w-4 h-4" />
+        </button>
+      </form>
+
+      {/* Categoría + Orden */}
+      <div className="flex gap-2">
+        <Select
+          value={currentCategory}
+          onChange={(e) => updateParams({ categoria: e.target.value })}
+          className="flex-1 min-w-0"
+        >
+          <option value="">Todas las categorías</option>
+          {categories.map((cat) => (
+            <option key={cat.id} value={cat.id}>
+              {cat.name}
+            </option>
+          ))}
+        </Select>
         <Select
           value={currentSort}
           onChange={(e) => updateParams({ orden: e.target.value })}
-          className="w-40 shrink-0"
+          className="w-36 shrink-0"
         >
           <option value="">Relevancia</option>
           <option value="precio_asc">Precio ↑</option>
@@ -78,13 +90,6 @@ export function CatalogoFilters({
           <option value="nombre">Nombre A-Z</option>
         </Select>
       </div>
-
-      {/* Category chips */}
-      <CategoryFilter
-        categories={categories}
-        selected={currentCategory || null}
-        onSelect={(id) => updateParams({ categoria: id ?? "" })}
-      />
 
       {isPending && (
         <div className="h-0.5 w-full bg-gray-light overflow-hidden rounded">

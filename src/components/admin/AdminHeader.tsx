@@ -76,7 +76,7 @@ export function AdminHeader() {
               </span>
             )}
             {loading && (
-              <span className="w-16 h-4 bg-gray-light rounded animate-pulse hidden md:block" />
+              <span className="w-16 h-4 bg-gray-light rounded animate-pulse" />
             )}
           </button>
 

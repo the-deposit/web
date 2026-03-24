@@ -1,13 +1,14 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   LineChart, Line, BarChart, Bar, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from "recharts";
 import {
   TrendingUp, ShoppingCart, Package, AlertTriangle,
-  CreditCard, Clock, Boxes, ChevronDown, ChevronUp,
+  CreditCard, Clock, Boxes, ChevronDown, ChevronUp, RefreshCw,
 } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 import type {
@@ -43,21 +44,21 @@ function KPICard({
 }) {
   return (
     <div
-      className={`bg-white border rounded-lg p-4 flex items-start gap-3 ${
+      className={`bg-white border rounded-lg p-3 sm:p-4 flex items-start gap-2 sm:gap-3 ${
         urgente ? "border-red-300 bg-red-50" : "border-gray-200"
       }`}
     >
       <div
-        className={`mt-0.5 p-2 rounded-md ${
+        className={`mt-0.5 p-1.5 sm:p-2 rounded-md shrink-0 ${
           urgente ? "bg-red-100 text-red-600" : "bg-gray-100 text-gray-700"
         }`}
       >
-        <Icon size={18} />
+        <Icon size={15} />
       </div>
       <div className="min-w-0">
-        <p className="text-xs text-gray-500 truncate">{titulo}</p>
-        <p className="font-display text-xl font-bold text-primary truncate">{valor}</p>
-        {sub && <p className="text-xs text-gray-400 truncate">{sub}</p>}
+        <p className="text-[11px] sm:text-xs text-gray-500 leading-tight mb-0.5">{titulo}</p>
+        <p className="font-display text-base sm:text-xl font-bold text-primary truncate leading-tight">{valor}</p>
+        {sub && <p className="text-[10px] sm:text-xs text-gray-400 truncate mt-0.5">{sub}</p>}
       </div>
     </div>
   );
@@ -108,8 +109,16 @@ export default function DashboardClient({
   precioVsCompetencia,
   alertas,
 }: Props) {
+  const router = useRouter();
   const [ventasPeriodo, setVentasPeriodo] = useState<PeriodTab>("mes");
   const [alertasExpandidas, setAlertasExpandidas] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const handleRefresh = () => {
+    setRefreshing(true);
+    router.refresh();
+    setTimeout(() => setRefreshing(false), 1200);
+  };
 
   // Filtrar ventas diarias según período seleccionado
   const ventasFiltradas = (() => {
@@ -163,7 +172,17 @@ export default function DashboardClient({
 
       {/* KPIs */}
       <section>
-        <SectionTitle>Resumen</SectionTitle>
+        <div className="flex items-center justify-between mb-3">
+          <SectionTitle>Resumen</SectionTitle>
+          <button
+            onClick={handleRefresh}
+            disabled={refreshing}
+            className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-primary transition-colors disabled:opacity-50"
+          >
+            <RefreshCw size={13} className={refreshing ? "animate-spin" : ""} />
+            Actualizar
+          </button>
+        </div>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
           <KPICard
             titulo="Ventas hoy"

@@ -2,6 +2,8 @@ import { createClient } from "@/lib/supabase/server";
 import { getDashboardData } from "./dashboard-actions";
 import DashboardClient from "./DashboardClient";
 
+export const dynamic = "force-dynamic";
+
 export default async function AdminDashboard() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();

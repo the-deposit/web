@@ -23,12 +23,26 @@ export default async function TiendaPage({
 
   const supabase = await createClient();
 
-  const { data: categories } = await supabase
-    .from("categories")
-    .select("id, name")
+  // Solo categorías que tienen al menos un producto activo
+  const { data: catIds } = await supabase
+    .from("products")
+    .select("category_id")
     .eq("is_active", true)
-    .order("sort_order")
-    .order("name");
+    .is("deleted_at", null)
+    .not("category_id", "is", null);
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const activeCatIds = [...new Set(((catIds ?? []) as any[]).map((p) => p.category_id as string))];
+
+  const { data: categories } = activeCatIds.length
+    ? await supabase
+        .from("categories")
+        .select("id, name")
+        .eq("is_active", true)
+        .in("id", activeCatIds)
+        .order("sort_order")
+        .order("name")
+    : { data: [] };
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let query = (supabase as any)

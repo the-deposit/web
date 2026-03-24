@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Oswald, DM_Sans } from "next/font/google";
+import { AuthProvider } from "@/providers/AuthProvider";
 import "./globals.css";
 
 const oswald = Oswald({
@@ -27,7 +28,7 @@ export default function RootLayout({
   return (
     <html lang="es">
       <body className={`${oswald.variable} ${dmSans.variable} font-body bg-secondary text-primary antialiased`}>
-        {children}
+        <AuthProvider>{children}</AuthProvider>
       </body>
     </html>
   );

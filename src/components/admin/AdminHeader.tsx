@@ -39,9 +39,11 @@ export function AdminHeader() {
   return (
     <header className="bg-secondary border-b border-border px-4 md:px-6 h-14 flex items-center justify-between gap-4 shrink-0">
       <div className="flex items-center gap-2">
-        <span className="md:hidden font-display text-primary tracking-widest uppercase text-sm">
-          The Deposit
+        {/* Mobile: current section label */}
+        <span className="md:hidden font-display text-primary uppercase tracking-wide text-sm">
+          {label}
         </span>
+        {/* Desktop: breadcrumb */}
         <span className="hidden md:flex items-center gap-2 text-sm font-body text-gray-mid">
           Admin
           <ChevronRight className="w-3 h-3" />
@@ -69,14 +71,14 @@ export function AdminHeader() {
                 <User className="w-3.5 h-3.5 text-secondary" />
               </div>
             )}
-            {/* Show name on desktop, show on mobile too once loaded */}
+            {/* Name: desktop only */}
             {!loading && (
-              <span className="text-sm font-medium text-primary max-w-[140px] truncate">
+              <span className="hidden md:inline text-sm font-medium text-primary max-w-[140px] truncate">
                 {displayName ?? "Mi cuenta"}
               </span>
             )}
             {loading && (
-              <span className="w-16 h-4 bg-gray-light rounded animate-pulse" />
+              <span className="hidden md:inline w-16 h-4 bg-gray-light rounded animate-pulse" />
             )}
           </button>
 

@@ -97,7 +97,7 @@ function AlertaItem({ alerta }: { alerta: Alerta }) {
   );
 }
 
-type PeriodTab = "dia" | "semana" | "mes";
+type PeriodTab = "dia" | "semana" | "mes"| "mes_actual" ;
 
 export default function DashboardClient({
   isAdmin,
@@ -124,6 +124,10 @@ export default function DashboardClient({
   const ventasFiltradas = (() => {
     if (ventasPeriodo === "dia") return ventasDiarias.slice(-1);
     if (ventasPeriodo === "semana") return ventasDiarias.slice(-7);
+    if (ventasPeriodo === "mes_actual") {
+      const mesActual = String(new Date().getMonth() + 1).padStart(2, "0");
+      return ventasDiarias.filter((v) => v.fecha.startsWith(mesActual));
+    }
     return ventasDiarias;
   })();
 
@@ -246,9 +250,9 @@ export default function DashboardClient({
       {/* Gráfica ventas diarias */}
       <section>
         <div className="flex items-center justify-between mb-3">
-          <SectionTitle>{isAdmin ? "Ventas y ganancia" : "Ventas"}</SectionTitle>
+          <SectionTitle>{isAdmin ? "Ventas vs Costo" : "Ventas"}</SectionTitle>
           <div className="flex gap-1">
-            {(["dia", "semana", "mes"] as PeriodTab[]).map((p) => (
+            {(["dia", "semana", "mes", "mes_actual"] as PeriodTab[]).map((p) => (
               <button
                 key={p}
                 onClick={() => setVentasPeriodo(p)}
@@ -258,7 +262,7 @@ export default function DashboardClient({
                     : "bg-gray-100 text-gray-600 hover:bg-gray-200"
                 }`}
               >
-                {p === "dia" ? "Hoy" : p === "semana" ? "7 días" : "30 días"}
+                {p === "dia" ? "Hoy" : p === "semana" ? "7 días" : p === "mes_actual" ? "Este mes" : "30 días"}
               </button>
             ))}
           </div>
@@ -273,14 +277,38 @@ export default function DashboardClient({
                 <XAxis dataKey="fecha" tick={{ fontSize: 11 }} />
                 <YAxis tick={{ fontSize: 11 }} width={60} tickFormatter={(v) => `Q${v}`} />
                 <Tooltip
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                  formatter={(value: any, name: any) => [
-                    formatCurrency(Number(value ?? 0)),
-                    name === "ventas" ? "Ventas" : "Ganancia",
-                  ]}
+                  content={({ active, payload, label }) => {
+                    if (!active || !payload?.length) return null;
+                    const ventas = payload.find((p) => p.dataKey === "ventas")?.value as number ?? 0;
+                    const costo = payload.find((p) => p.dataKey === "costo")?.value as number ?? 0;
+                    const ganancia = ventas - costo;
+                    return (
+                      <div className="bg-white border border-gray-200 rounded-md shadow-sm p-2.5 text-xs space-y-1 min-w-[140px]">
+                        <p className="font-semibold text-gray-700 mb-1">{label}</p>
+                        <div className="flex justify-between gap-4">
+                          <span className="text-gray-500">Ventas</span>
+                          <span className="font-medium text-gray-900">{formatCurrency(ventas)}</span>
+                        </div>
+                        {isAdmin && (
+                          <>
+                            <div className="flex justify-between gap-4">
+                              <span className="text-gray-500">Costo</span>
+                              <span className="font-medium text-gray-500">{formatCurrency(costo)}</span>
+                            </div>
+                            <div className="flex justify-between gap-4 border-t border-gray-100 pt-1 mt-1">
+                              <span className="text-gray-700 font-semibold">{ganancia >= 0 ? "Ganancia bruta" : "Pérdida bruta"}</span>
+                              <span className={`font-bold ${ganancia >= 0 ? "text-green-700" : "text-red-600"}`}>
+                                {formatCurrency(Math.abs(ganancia))}
+                              </span>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    );
+                  }}
                 />
                 {isAdmin && (
-                  <Legend formatter={(v) => (v === "ventas" ? "Ventas" : "Ganancia")} />
+                  <Legend formatter={(v) => v === "ventas" ? "Ventas" : v === "costo" ? "Costo" : "Ganancia"} />
                 )}
                 <Line
                   type="monotone"
@@ -292,7 +320,7 @@ export default function DashboardClient({
                 {isAdmin && (
                   <Line
                     type="monotone"
-                    dataKey="ganancia"
+                    dataKey="costo"
                     stroke="#888888"
                     strokeWidth={2}
                     dot={false}

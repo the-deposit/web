@@ -17,6 +17,7 @@ export type KPIs = {
 export type VentaDiaria = {
   fecha: string;
   ventas: number;
+  costo: number;
   ganancia: number;
 };
 
@@ -100,19 +101,19 @@ export async function getDashboardData(isAdmin: boolean): Promise<DashboardData>
       .select("total")
       .gte("created_at", `${hoy}T00:00:00`)
       .lte("created_at", `${hoy}T23:59:59`)
-      .eq("status", "completada"),
+      .in("status", ["confirmada", "entregada"]),
 
     supabase
       .from("sales")
       .select("total")
       .gte("created_at", inicioSemana.toISOString())
-      .eq("status", "completada"),
+      .in("status", ["confirmada", "entregada"]),
 
     supabase
       .from("sales")
       .select("total")
       .gte("created_at", inicioMes.toISOString())
-      .eq("status", "completada"),
+      .in("status", ["confirmada", "entregada"]),
 
     supabase
       .from("orders")
@@ -128,7 +129,7 @@ export async function getDashboardData(isAdmin: boolean): Promise<DashboardData>
       .from("sales")
       .select("created_at, total")
       .gte("created_at", hace30Dias.toISOString())
-      .eq("status", "completada")
+      .in("status", ["confirmada", "entregada"])
       .order("created_at"),
 
     supabase
@@ -161,9 +162,9 @@ export async function getDashboardData(isAdmin: boolean): Promise<DashboardData>
     ? Promise.all([
         supabase
           .from("sales")
-          .select("total, sale_items(quantity, product_presentations(cost_price))")
-          .gte("created_at", inicioMes.toISOString())
-          .eq("status", "completada"),
+          .select("created_at, total, sale_items(quantity, product_presentations(cost_price))")
+          .gte("created_at", hace30Dias.toISOString())
+          .in("status", ["confirmada", "entregada"]),
 
         supabase
           .from("accounts_receivable")
@@ -235,6 +236,23 @@ export async function getDashboardData(isAdmin: boolean): Promise<DashboardData>
     alertasPedidosRes,
   ] = base;
 
+  // Log any query errors to help diagnose issues
+  const baseErrors = [
+    ["ventasHoy", ventasHoyRes.error],
+    ["ventasSemana", ventasSemanaRes.error],
+    ["ventasMes", ventasMesRes.error],
+    ["pedidosPendientes", pedidosPendientesRes.error],
+    ["presentaciones", presentacionesRes.error],
+    ["ventasDiarias", ventasDiariasRes.error],
+    ["topProductos", topProductosRes.error],
+    ["ventasCategoriaBase", ventasCategoriaBaseRes.error],
+    ["alertasVencimiento", alertasVencimientoRes.error],
+    ["alertasPedidos", alertasPedidosRes.error],
+  ];
+  for (const [name, err] of baseErrors) {
+    if (err) console.error(`[Dashboard] Error en query "${name}":`, err);
+  }
+
   const [
     ventasMesCostoRes,
     cxcVencidasRes,
@@ -246,6 +264,23 @@ export async function getDashboardData(isAdmin: boolean): Promise<DashboardData>
     alertasCxcRes,
     alertasCxpRes,
   ] = admin ?? [null, null, null, null, null, null, null, null, null];
+
+  if (isAdmin && admin) {
+    const adminErrors = [
+      ["ventasMesCosto", ventasMesCostoRes?.error],
+      ["cxcVencidas", cxcVencidasRes?.error],
+      ["cxpProximas", cxpProximasRes?.error],
+      ["consignacionesActivas", consignacionesActivasRes?.error],
+      ["ventasCategoriaCosto", ventasCategoriaCostoRes?.error],
+      ["compProductos", compProductosRes?.error],
+      ["alertasConsignaciones", alertasConsignacionesRes?.error],
+      ["alertasCxc", alertasCxcRes?.error],
+      ["alertasCxp", alertasCxpRes?.error],
+    ];
+    for (const [name, err] of adminErrors) {
+      if (err) console.error(`[Dashboard] Error en query admin "${name}":`, err);
+    }
+  }
 
   // ---- KPIs ----
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -265,22 +300,39 @@ export async function getDashboardData(isAdmin: boolean): Promise<DashboardData>
   const stockBajoCount = stockBajoItems.length;
 
   // ---- Ventas diarias ----
-  const ventasDiariasMap = new Map<string, { ventas: number; ganancia: number }>();
+  const ventasDiariasMap = new Map<string, { ventas: number; costo: number; ganancia: number }>();
   for (let i = 0; i < 30; i++) {
     const d = new Date(hace30Dias);
     d.setDate(d.getDate() + i);
-    ventasDiariasMap.set(d.toISOString().split("T")[0], { ventas: 0, ganancia: 0 });
+    ventasDiariasMap.set(d.toISOString().split("T")[0], { ventas: 0, costo: 0, ganancia: 0 });
   }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   for (const sale of (ventasDiariasRes.data ?? []) as any[]) {
     const fecha = sale.created_at.split("T")[0];
-    const entry = ventasDiariasMap.get(fecha) ?? { ventas: 0, ganancia: 0 };
+    const entry = ventasDiariasMap.get(fecha) ?? { ventas: 0, costo: 0, ganancia: 0 };
     entry.ventas += sale.total;
     ventasDiariasMap.set(fecha, entry);
+  }
+  // Ganancia diaria (solo admin) — usamos ventasMesCostoRes que ya trae sale_items con cost_price
+  if (isAdmin && ventasMesCostoRes?.data) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    for (const sale of ventasMesCostoRes.data as any[]) {
+      const fecha = sale.created_at.split("T")[0];
+      const entry = ventasDiariasMap.get(fecha);
+      if (!entry) continue;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const costo = (sale.sale_items ?? []).reduce((c: number, item: any) => {
+        return c + (item.product_presentations?.cost_price ?? 0) * item.quantity;
+      }, 0);
+      entry.costo += costo;
+      entry.ganancia += sale.total - costo;
+      ventasDiariasMap.set(fecha, entry);
+    }
   }
   const ventasDiarias: VentaDiaria[] = Array.from(ventasDiariasMap.entries()).map(([fecha, v]) => ({
     fecha: fecha.slice(5),
     ventas: Math.round(v.ventas * 100) / 100,
+    costo: Math.round(v.costo * 100) / 100,
     ganancia: Math.round(v.ganancia * 100) / 100,
   }));
 
